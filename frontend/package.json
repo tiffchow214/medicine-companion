@@ -1,0 +1,30 @@
+{
+  "name": "medication-companion-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "lucide-react": "^0.555.0",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "autoprefixer": "^10.4.22",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.0.0"
+  }
+}
