@@ -114,7 +114,7 @@ def personalized_reminder(req: PersonalizedReminderRequest):
     {
       "user_name": "Tiffany",
       "medication_name": "Aspirin",
-      "purpose": "heart health",
+      "purpose": "pain relief",
       "adherence": {
         "current_streak": 7,
         "missed_in_last_week": 0
