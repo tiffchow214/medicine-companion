@@ -1,17 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Clock,
-  Pill,
-  Calendar,
-  Plus,
-  User,
-  Settings,
-  CheckCircle2,
-  BookOpen
-} from 'lucide-react';
+import { Clock, Check, X, CalendarDays, User, Pill } from 'lucide-react';
 
 import {
   getActiveProfile,
@@ -19,126 +10,433 @@ import {
   getDosesForUser,
   updateDoseStatus,
   addDoseLog,
-  upsertDoses
 } from '@/lib/storage';
-import { useReminderScheduler } from '@/hooks/useReminderScheduler';
-import { ReminderModal } from '@/components/ReminderModal';
-import { MedicationInfoModal } from '@/components/MedicationInfoModal';
 import type { Medication, DoseInstance } from '@/lib/medicationTypes';
 import { sendCaregiverAlert } from '@/lib/caregiverClient';
 
+/* ---------- Helpers ---------- */
+
+type TimeGroup =
+  | 'Morning'
+  | 'Afternoon'
+  | 'Evening'
+  | 'Bedtime'
+  | 'As Needed'
+  | 'Other';
+
+function getWeekDays(center: Date) {
+  const days: Date[] = [];
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(center);
+    d.setDate(center.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+function getTimeGroup(dose: DoseInstance, medication?: Medication): TimeGroup {
+  if (medication?.frequency === 'as_needed') return 'As Needed';
+
+  const h = new Date(dose.scheduledTime).getHours();
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  if (h < 21) return 'Evening';
+  if (h < 24) return 'Bedtime';
+  return 'Other';
+}
+
+const MED_COLOURS = [
+  'bg-blue-400',
+  'bg-amber-400',
+  'bg-red-400',
+  'bg-indigo-400',
+  'bg-emerald-400',
+  'bg-pink-400',
+];
+
+function getMedColor(medId: string) {
+  let sum = 0;
+  for (const ch of medId) sum += ch.charCodeAt(0);
+  return MED_COLOURS[sum % MED_COLOURS.length];
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/* ---------- Week selector ---------- */
+
+interface WeekSelectorProps {
+  selectedDay: Date;
+  setSelectedDay: (d: Date) => void;
+}
+
+function WeekSelector({ selectedDay, setSelectedDay }: WeekSelectorProps) {
+  const weekDays = getWeekDays(selectedDay);
+  const todayStr = new Date().toDateString();
+
+  return (
+    <div className="flex justify-center mt-6">
+      <div className="flex overflow-x-auto gap-3 py-2 px-2 scrollbar-hide">
+        {weekDays.map((date) => {
+          const dayName = date.toLocaleDateString('en-US', {
+            weekday: 'short',
+          });
+          const dayNum = date.getDate();
+          const isSelected = date.toDateString() === selectedDay.toDateString();
+          const isToday = date.toDateString() === todayStr;
+
+          const base =
+            'flex flex-col items-center justify-center w-14 h-14 rounded-full cursor-pointer transition-colors duration-200 flex-shrink-0 border border-white/40 bg-white';
+          const active =
+            'bg-[#FACC15] shadow-lg ring-4 ring-[#FEF08A] border-none';
+          const inactive = 'hover:bg-slate-200/90';
+          const todayOnly =
+            isToday && !isSelected ? 'border-2 border-[#FACC15] font-bold' : '';
+
+          // Explicit black text for weekly circles
+          const textStyle: React.CSSProperties = {
+            color: '#000000',
+            WebkitTextFillColor: '#000000',
+          };
+
+          return (
+            <button
+              type="button"
+              key={date.toISOString()}
+              onClick={() => setSelectedDay(date)}
+              className={`${base} ${isSelected ? active : inactive} ${todayOnly}`}
+            >
+              <span
+                className="text-xs font-semibold"
+                style={textStyle}
+              >
+                {dayName}
+              </span>
+              <span
+                className="text-lg font-extrabold leading-tight"
+                style={textStyle}
+              >
+                {dayNum}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Dose card ---------- */
+
+interface DoseCardProps {
+  dose: DoseInstance;
+  medication: Medication;
+  onMarkTaken: (dose: DoseInstance) => void;
+  onSkip: (dose: DoseInstance) => void;
+}
+
+function DoseCard({ dose, medication, onMarkTaken, onSkip }: DoseCardProps) {
+  const medColorClass = getMedColor(medication.id);
+
+  let statusText: string;
+  let statusClasses: string;
+  let Icon = Clock;
+
+  switch (dose.status) {
+    case 'taken':
+      statusText = 'Taken';
+      statusClasses = 'bg-emerald-500/80 text-white';
+      Icon = Check;
+      break;
+    case 'skipped':
+      statusText = 'Skipped';
+      statusClasses = 'bg-rose-500/80 text-white';
+      Icon = X;
+      break;
+    case 'missed':
+      statusText = 'Missed';
+      statusClasses = 'bg-rose-500/80 text-white';
+      Icon = X;
+      break;
+    case 'due':
+      statusText = 'Due Now';
+      statusClasses = 'bg-amber-400/90 text-slate-900';
+      Icon = Clock;
+      break;
+    default:
+      statusText = 'Upcoming';
+      statusClasses = 'bg-slate-500/80 text-white';
+      Icon = Clock;
+      break;
+  }
+
+  const timeStr = new Date(dose.scheduledTime).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  const isActionable = dose.status !== 'taken';
+
+  return (
+    <div className="flex w-full overflow-hidden rounded-2xl shadow-xl bg-black/70 backdrop-blur-sm border border-white/15">
+      {/* Color bar */}
+      <div className={`w-3 ${medColorClass} flex-shrink-0`} />
+
+      <div className="flex-grow p-4 space-y-2">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase opacity-80 flex items-center">
+              <Clock className="w-3 h-3 mr-1" />
+              {timeStr}
+            </p>
+            <h3 className="text-xl font-bold leading-tight mt-1">
+              {medication.name}
+            </h3>
+            <p className="text-sm mt-0.5">{medication.dose}</p>
+          </div>
+          <div
+            className={`px-3 py-1 rounded-full font-bold text-sm flex items-center ${statusClasses}`}
+          >
+            <Icon className="w-4 h-4 mr-1" />
+            {statusText}
+          </div>
+        </div>
+
+        <div className="pt-2 flex justify-between items-center border-t border-dashed border-white/20">
+          <p className="text-sm italic">
+            {medication.instructions || medication.purpose || 'No extra notes.'}
+          </p>
+
+          {isActionable ? (
+            <div className="flex gap-2 text-sm font-semibold">
+              <button
+                type="button"
+                onClick={() => onMarkTaken(dose)}
+                className="px-4 py-2 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+              >
+                Mark Taken
+              </button>
+              <button
+                type="button"
+                onClick={() => onSkip(dose)}
+                className="px-4 py-2 rounded-full text-rose-200 border border-rose-300/70 hover:bg-rose-500/10 transition-colors bg-black/40"
+              >
+                Skip
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="text-sm font-semibold text-emerald-200 flex items-center opacity-80"
+            >
+              <Check className="w-4 h-4 mr-1" />
+              Logged
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Monthly calendar ---------- */
+
+interface MonthlyCalendarProps {
+  doses: DoseInstance[];
+  medications: Medication[];
+}
+
+function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const todayDate = now.getDate();
+
+  const getDaysInMonth = (month: number, year: number) =>
+    new Date(year, month + 1, 0).getDate();
+
+  const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun
+
+  const calendarDays: (number | null)[] = [];
+  for (let i = 0; i < firstDayOfMonth; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+
+  const dots: Record<number, string[]> = {};
+
+  doses.forEach((dose) => {
+    const d = new Date(dose.scheduledTime);
+    if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) return;
+
+    const med = medications.find((m) => m.id === dose.medicationId);
+    if (!med) return;
+
+    const dateNum = d.getDate();
+    if (!dots[dateNum]) dots[dateNum] = [];
+    const color = getMedColor(med.id);
+    if (!dots[dateNum].includes(color)) dots[dateNum].push(color);
+  });
+
+  return (
+    <div className="p-6 bg-black/70 rounded-2xl shadow-xl mt-8 border border-white/20 backdrop-blur-sm">
+      <h2 className="text-2xl font-bold mb-4 flex items-center">
+        <CalendarDays className="w-6 h-6 mr-2 text-[#FACC15]" />
+
+        <span
+          style={{
+            color: '#FACC15',
+            WebkitTextFillColor: '#FACC15',
+          }}
+        >
+          {new Date(currentYear, currentMonth).toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric',
+          })}
+        </span>
+       </h2>
+
+
+      <div className="grid grid-cols-7 text-center text-sm font-semibold border-b border-white/10 pb-2 mb-2">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+          <div key={day} className="w-full">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {calendarDays.map((day, idx) => {
+          const isToday = day === todayDate;
+          const dotColours = day ? dots[day] || [] : [];
+          const base =
+            'flex flex-col items-center justify-center p-1 h-10 transition-colors duration-150 rounded-lg';
+
+          // style for the number in the circle
+          const dayStyle: React.CSSProperties = isToday
+            ? { color: '#000000', WebkitTextFillColor: '#000000' } // today = black
+            : { color: '#FFFFFF', WebkitTextFillColor: '#FFFFFF' }; // others = white
+
+          return (
+            <div key={idx} className={base}>
+              {day ? (
+                <>
+                  <div
+                    className={`w-8 h-8 flex items-center justify-center rounded-full text-sm cursor-pointer ${
+                      isToday
+                        ? 'bg-[#FACC15] font-bold shadow-md'
+                        : 'hover:bg-white/10'
+                    }`}
+                    style={dayStyle}
+                  >
+                    {day}
+                  </div>
+                  {dotColours.length > 0 && (
+                    <div className="flex gap-0.5 mt-0.5">
+                      {dotColours.slice(0, 3).map((c, i) => (
+                        <div key={i} className={`w-1.5 h-1.5 rounded-full ${c}`} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="w-8 h-8" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Main Dashboard Page ---------- */
+
 export default function DashboardPage() {
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
   const [profile, setProfile] = useState(getActiveProfile());
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doses, setDoses] = useState<DoseInstance[]>([]);
-  const [selectedMedicationForInfo, setSelectedMedicationForInfo] =
-    useState<Medication | null>(null);
-
-  const {
-    dueDose,
-    currentMedication,
-    clearDueDose,
-    markDoseTaken,
-    markDoseSkipped,
-    snoozeDose
-  } = useReminderScheduler();
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   useEffect(() => {
+    setIsMounted(true);
     const active = getActiveProfile();
     if (!active) {
       router.push('/welcome');
       return;
     }
     setProfile(active);
-    loadData(active.id);
+    setMedications(getMedicationsForUser(active.id));
+    setDoses(getDosesForUser(active.id));
+    setSelectedDay(new Date());
   }, [router]);
 
-  const loadData = (userId: string) => {
-    setMedications(getMedicationsForUser(userId));
-    setDoses(getDosesForUser(userId));
+  if (!isMounted || !profile || !selectedDay) {
+    return null;
+  }
+
+  // Doses for selected day
+  const dayDoses: DoseInstance[] = (() => {
+    const start = new Date(selectedDay);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 1);
+
+    return doses.filter((d) => {
+      const t = new Date(d.scheduledTime);
+      return t >= start && t < end;
+    });
+  })();
+
+  // Group doses
+  const grouped: Record<TimeGroup, DoseInstance[]> = {
+    Morning: [],
+    Afternoon: [],
+    Evening: [],
+    Bedtime: [],
+    'As Needed': [],
+    Other: [],
   };
 
-  useEffect(() => {
-    if (!profile) return;
-    const interval = setInterval(() => {
-      loadData(profile.id);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [profile]);
+  dayDoses.forEach((dose) => {
+    const med = medications.find((m) => m.id === dose.medicationId);
+    const group = getTimeGroup(dose, med);
+    grouped[group].push(dose);
+  });
 
-  const todayDoses = useMemo(() => {
-    if (!profile) return [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  const groupedKeys = (Object.keys(grouped) as TimeGroup[]).filter(
+    (k) => grouped[k].length > 0,
+  );
 
-    return doses.filter((dose) => {
-      const scheduled = new Date(dose.scheduledTime);
-      return scheduled >= today && scheduled < tomorrow;
-    });
-  }, [doses, profile]);
-
-  const dosesByMedication = useMemo(() => {
-    const groups: Record<string, DoseInstance[]> = {};
-    for (const dose of todayDoses) {
-      if (!groups[dose.medicationId]) {
-        groups[dose.medicationId] = [];
-      }
-      groups[dose.medicationId].push(dose);
-    }
-    return groups;
-  }, [todayDoses]);
-
-  const progress = useMemo(() => {
-    const taken = todayDoses.filter((d) => d.status === 'taken').length;
-    const total = todayDoses.length;
-    return { taken, total, percentage: total > 0 ? (taken / total) * 100 : 0 };
-  }, [todayDoses]);
-
-  const nextDose = useMemo(() => {
-    const upcoming = todayDoses
-      .filter((d) => d.status === 'upcoming' || d.status === 'due')
-      .sort(
-        (a, b) =>
-          new Date(a.scheduledTime).getTime() -
-          new Date(b.scheduledTime).getTime()
-      )[0];
-    return upcoming;
-  }, [todayDoses]);
-
-  const handleDoseTaken = (doseId: string) => {
-    if (!profile) return;
+  const handleDoseTaken = (dose: DoseInstance) => {
     const takenAt = new Date().toISOString();
-    const dose = doses.find((d) => d.id === doseId);
-
-    updateDoseStatus(profile.id, doseId, 'taken', takenAt);
-    addDoseLog(profile.id, {
-      id: `${Date.now()}-${Math.random()}`,
-      userId: profile.id,
-      medicationId: dose?.medicationId || '',
-      doseId,
-      status: 'taken',
-      createdAt: takenAt
-    });
-
-    loadData(profile.id);
-  };
-
-  const handleDoseSkipped = (doseId: string) => {
-    if (!profile) return;
-    const dose = doses.find((d) => d.id === doseId);
-    if (!dose) return;
-
-    updateDoseStatus(profile.id, doseId, 'skipped');
+    updateDoseStatus(profile.id, dose.id, 'taken', takenAt);
     addDoseLog(profile.id, {
       id: `${Date.now()}-${Math.random()}`,
       userId: profile.id,
       medicationId: dose.medicationId,
-      doseId,
+      doseId: dose.id,
+      status: 'taken',
+      createdAt: takenAt,
+    });
+    setDoses(getDosesForUser(profile.id));
+  };
+
+  const handleDoseSkipped = (dose: DoseInstance) => {
+    updateDoseStatus(profile.id, dose.id, 'skipped');
+    addDoseLog(profile.id, {
+      id: `${Date.now()}-${Math.random()}`,
+      userId: profile.id,
+      medicationId: dose.medicationId,
+      doseId: dose.id,
       status: 'skipped',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     });
 
     const medication = medications.find((m) => m.id === dose.medicationId);
@@ -155,325 +453,111 @@ export default function DashboardPage() {
         medication_name: medication.name,
         scheduled_time: dose.scheduledTime,
         status: 'skipped',
-        reason: 'User marked dose as skipped from dashboard.'
-      }).catch((err) => {
-        console.error('Failed to send caregiver alert:', err);
-      });
+        reason: 'User marked dose as skipped from dashboard.',
+      }).catch((err) => console.error('Failed to send caregiver alert:', err));
     }
 
-    loadData(profile.id);
+    setDoses(getDosesForUser(profile.id));
   };
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+  // Page-level white text (default), overridable with inline styles
+  const pageTextStyle: React.CSSProperties = {
+    color: '#FFFFFF',
+    WebkitTextFillColor: '#FFFFFF',
   };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const getStatusColor = (status: DoseInstance['status']) => {
-    switch (status) {
-      case 'taken':
-        return 'bg-warm-green text-white';
-      case 'due':
-        return 'bg-[#FF8800] text-white';
-      case 'missed':
-        return 'bg-coral text-white';
-      case 'skipped':
-        return 'bg-slate-400 text-white';
-      default:
-        return 'bg-soft-teal text-white';
-    }
-  };
-
-  const getStatusLabel = (status: DoseInstance['status']) => {
-    switch (status) {
-      case 'taken':
-        return 'Taken';
-      case 'due':
-        return 'Due Now';
-      case 'missed':
-        return 'Missed';
-      case 'skipped':
-        return 'Skipped';
-      default:
-        return 'Upcoming';
-    }
-  };
-
-  if (!profile) {
-    return null;
-  }
 
   return (
-    <div className="relative min-h-screen">
-      <main className="mx-auto max-w-4xl px-4 py-8 md:py-12">
-        {/* Header with greeting */}
-        <div className="mb-10">
-          <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-soft-teal/10">
-                <User className="h-7 w-7 text-soft-teal" strokeWidth={2} />
+    <main
+      className="min-h-screen"
+      style={{
+        ...pageTextStyle,
+        backgroundImage:
+          "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+      }}
+    >
+      <div className="min-h-screen flex items-start justify-center p-4 sm:p-6 md:p-8">
+        <div className="w-full max-w-5xl space-y-8">
+          {/* HEADER CARD */}
+          <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
+            <div className="flex justify-between items-center mb-6">
+              <div className="text-left">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
+                  {getGreeting()}, {profile.name}
+                </h1>
               </div>
-              <div>
-                <div className="text-xl font-light text-slate-900">
-                  {profile.name}
-                </div>
-                <div className="text-base font-light text-slate-500">
-                  {formatDate(new Date())}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => router.push('/settings')}
-              className="glass-card flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition hover:bg-white/80"
-              aria-label="Settings"
-            >
-              <Settings className="h-5 w-5" strokeWidth={2} />
-            </button>
-          </div>
-          <h1 className="text-[32px] md:text-[36px] font-light text-slate-900 tracking-tight">
-            {getGreeting()}, {profile.name}!
-          </h1>
-        </div>
 
-        {/* Today's Progress Card */}
-        <div className="glass-card mb-8 rounded-3xl p-8 md:p-10 shadow-glass-lg">
-          <h2 className="mb-6 text-xl font-light text-slate-900">
-            Today&apos;s Progress
-          </h2>
-          <div className="flex items-center gap-8">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-warm-green/10">
-              <CheckCircle2 className="h-10 w-10 text-warm-green" strokeWidth={2} />
-            </div>
-            <div className="flex-1">
-              <div className="mb-2 text-2xl font-light text-slate-900">
-                {progress.taken} of {progress.total} doses taken
-              </div>
-              {/* Progress bar */}
-              {progress.total > 0 && (
-                <div className="mb-3 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-soft-teal to-warm-green transition-all duration-500 rounded-full"
-                    style={{ width: `${progress.percentage}%` }}
-                  />
-                </div>
-              )}
-              {nextDose ? (
-                <div className="flex items-center gap-2 text-lg font-light text-slate-600">
-                  <Clock className="h-5 w-5 text-soft-teal" strokeWidth={2} />
-                  <span>
-                    Next:{' '}
-                    {medications.find((m) => m.id === nextDose.medicationId)
-                      ?.name || 'Medication'}{' '}
-                    at{' '}
-                    {new Date(nextDose.scheduledTime).toLocaleTimeString(
-                      'en-US',
-                      {
-                        hour: 'numeric',
-                        minute: '2-digit'
-                      }
-                    )}
-                  </span>
-                </div>
-              ) : (
-                <div className="text-lg font-light text-slate-500">No upcoming doses</div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Medication Cards */}
-        <div className="space-y-6">
-          {medications.map((medication) => {
-            const medDoses = dosesByMedication[medication.id] || [];
-            if (medDoses.length === 0 && medication.frequency !== 'as_needed') {
-              return null;
-            }
-
-            return (
-              <div
-                key={medication.id}
-                className="glass-card rounded-3xl p-8 md:p-10 shadow-glass-lg"
+              {/* profile icon: yellow circle, black icon */}
+              <button
+                type="button"
+                onClick={() => router.push('/settings')}
+                className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
               >
-                <div className="mb-8 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-5">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-soft-teal/10 flex-shrink-0">
-                      <Pill className="h-7 w-7 text-soft-teal" strokeWidth={2} />
-                    </div>
-                    <div>
-                      <h3 className="mb-2 text-2xl font-light text-slate-900">
-                        {medication.name}
-                      </h3>
-                      <div className="text-lg font-light text-slate-600 mb-1">
-                        <span className="font-normal">Dose:</span> {medication.dose}
-                      </div>
-                      {medication.purpose && (
-                        <div className="text-base font-light text-slate-500">
-                          For: {medication.purpose}
-                        </div>
-                      )}
-                    </div>
+                <User className="w-5 h-5" />
+              </button>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold mb-2 text-center drop-shadow-lg">
+               Your medicines for{' '}
+               <span
+                 className="font-extrabold"
+                 style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
+               >
+                 today
+               </span>
+            </h2>
+
+            <p className="text-sm sm:text-base text-center text-slate-100/90 mb-2">
+              Tap a day above to see doses for that date.
+            </p>
+
+            <WeekSelector
+              selectedDay={selectedDay}
+              setSelectedDay={setSelectedDay}
+            />
+          </div>
+
+          {/* GROUPED DOSES */}
+          <div className="space-y-6">
+            {groupedKeys.length > 0 ? (
+              groupedKeys.map((group) => (
+                <div key={group} className="space-y-4">
+                  <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
+                    {group} Doses
+                  </h3>
+                  <div className="space-y-3">
+                    {grouped[group].map((dose) => {
+                      const med = medications.find(
+                        (m) => m.id === dose.medicationId,
+                      );
+                      if (!med) return null;
+                      return (
+                        <DoseCard
+                          key={dose.id}
+                          dose={dose}
+                          medication={med}
+                          onMarkTaken={handleDoseTaken}
+                          onSkip={handleDoseSkipped}
+                        />
+                      );
+                    })}
                   </div>
-                  <button
-                    onClick={() => setSelectedMedicationForInfo(medication)}
-                    className="glass-card flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-light text-soft-teal transition hover:bg-white/80 flex-shrink-0"
-                  >
-                    <BookOpen className="h-4 w-4" strokeWidth={2} />
-                    Learn More
-                  </button>
                 </div>
-
-                {medication.instructions && (
-                  <div className="mb-6 rounded-2xl bg-soft-teal/5 border border-soft-teal/20 p-5 text-base font-light text-slate-700">
-                    <span className="font-normal">Instructions:</span> {medication.instructions}
-                  </div>
-                )}
-
-                {/* Dose Items */}
-                <div className="space-y-4">
-                  {medDoses.map((dose) => {
-                    const scheduledTime = new Date(dose.scheduledTime);
-                    const timeStr = scheduledTime.toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    });
-
-                    return (
-                      <div
-                        key={dose.id}
-                        className="glass-card rounded-2xl p-6 border border-white/40"
-                      >
-                        <div className="mb-5 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Clock className="h-6 w-6 text-soft-teal" strokeWidth={2} />
-                            <span className="text-xl font-light text-slate-900">
-                              {timeStr}
-                            </span>
-                          </div>
-                          <span
-                            className={`rounded-full px-5 py-1.5 text-sm font-medium ${getStatusColor(
-                              dose.status
-                            )}`}
-                          >
-                            {getStatusLabel(dose.status)}
-                          </span>
-                        </div>
-                        {dose.takenAt && (
-                          <div className="mb-4 flex items-center gap-2 text-base font-light text-slate-600">
-                            <CheckCircle2 className="h-5 w-5 text-warm-green" strokeWidth={2} />
-                            <span>
-                              Taken at{' '}
-                              {new Date(dose.takenAt).toLocaleTimeString(
-                                'en-US',
-                                {
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                }
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          {dose.status !== 'taken' && (
-                            <>
-                              <button
-                                onClick={() => handleDoseTaken(dose.id)}
-                                className="btn-success flex-1 rounded-full px-6 py-4 text-lg font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-warm-green"
-                              >
-                                Take Dose
-                              </button>
-                              <button
-                                onClick={() => handleDoseSkipped(dose.id)}
-                                className="rounded-full bg-coral px-6 py-4 text-lg font-medium text-white shadow-soft transition hover:bg-coral/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
-                              >
-                                Skip
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const current =
-                                    dose.scheduledTime.slice(11, 16);
-                                  const newTime =
-                                    window.prompt(
-                                      'Choose a new time for this dose (HH:MM)',
-                                      current
-                                    ) ?? current;
-                                  if (!/^\d{2}:\d{2}$/.test(newTime)) return;
-                                  const [h, m] = newTime
-                                    .split(':')
-                                    .map(Number);
-                                  const newDate = new Date(dose.scheduledTime);
-                                  newDate.setHours(h, m, 0, 0);
-                                  const updated: DoseInstance = {
-                                    ...dose,
-                                    scheduledTime: newDate.toISOString(),
-                                    status: 'upcoming'
-                                  };
-                                  upsertDoses(profile.id, [updated]);
-                                  loadData(profile.id);
-                                }}
-                                className="glass-card rounded-full px-6 py-4 text-base font-light text-slate-700 transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-soft-teal"
-                              >
-                                <Calendar className="h-5 w-5 mx-auto" strokeWidth={2} />
-                              </button>
-                            </>
-                          )}
-                          {dose.status === 'taken' && (
-                            <div className="flex-1 rounded-full bg-warm-green/10 px-6 py-4 text-center text-lg font-light text-warm-green">
-                              ✓ Taken
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
+                <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
+                <p className="text-lg sm:text-xl">No medications scheduled for this day.</p>
               </div>
-            );
-          })}
+            )}
+          </div>
+
+          {/* MONTHLY CALENDAR */}
+          <MonthlyCalendar doses={doses} medications={medications} />
         </div>
-
-        {/* Floating Add Button */}
-        <button
-          onClick={() => router.push('/add-medication')}
-          className="fixed bottom-8 right-8 flex h-20 w-20 items-center justify-center rounded-full bg-soft-teal text-white shadow-glass-lg transition hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-soft-teal z-40"
-          aria-label="Add new medication"
-        >
-          <Plus className="h-8 w-8" strokeWidth={2.5} />
-        </button>
-      </main>
-
-      {/* Reminder Modal */}
-      {dueDose && currentMedication && (
-        <ReminderModal
-          open={!!dueDose}
-          onClose={clearDueDose}
-          dose={dueDose}
-          medication={currentMedication}
-          userName={profile.name}
-          onTaken={markDoseTaken}
-          onSkipped={markDoseSkipped}
-          onSnoozed={snoozeDose}
-        />
-      )}
-
-      {/* Medication Info Modal */}
-      {selectedMedicationForInfo && (
-        <MedicationInfoModal
-          open={!!selectedMedicationForInfo}
-          onClose={() => setSelectedMedicationForInfo(null)}
-          medicationName={selectedMedicationForInfo.name}
-        />
-      )}
-    </div>
+      </div>
+    </main>
   );
 }

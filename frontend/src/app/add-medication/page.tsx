@@ -6,20 +6,23 @@ import {
   Calendar,
   ChevronLeft,
   Clock,
-  Pill,
   User,
   AlertCircle,
   X,
-  Plus
+  Plus,
 } from 'lucide-react';
 import {
   getActiveProfile,
   getMedicationsForUser,
   getDosesForUser,
   saveMedicationsForUser,
-  saveDosesForUser
+  saveDosesForUser,
 } from '@/lib/storage';
-import type { Medication, DoseInstance, MedicationFrequency } from '@/lib/medicationTypes';
+import type {
+  Medication,
+  DoseInstance,
+  MedicationFrequency,
+} from '@/lib/medicationTypes';
 
 type FrequencyOption =
   | 'once_daily'
@@ -57,7 +60,7 @@ const DEFAULT_FORM: FormState = {
   caregiverName: '',
   caregiverEmail: '',
   alertOnSkipped: true,
-  alertOnMissed: true
+  alertOnMissed: true,
 };
 
 export default function AddMedicationPage() {
@@ -103,7 +106,7 @@ export default function AddMedicationPage() {
     setForm((prev) => ({
       ...prev,
       frequency: freq,
-      times: updateTimesForFrequency(freq)
+      times: updateTimesForFrequency(freq),
     }));
   }
 
@@ -118,7 +121,7 @@ export default function AddMedicationPage() {
   function handleAddTime() {
     setForm((prev) => ({
       ...prev,
-      times: [...prev.times, '08:00']
+      times: [...prev.times, '08:00'],
     }));
   }
 
@@ -140,22 +143,20 @@ export default function AddMedicationPage() {
     return `https://www.drugs.com/${slug}.html`;
   }
 
-  // Map form frequency to MedicationFrequency type
   function mapFrequencyToType(freq: FrequencyOption): MedicationFrequency {
     const mapping: Record<FrequencyOption, MedicationFrequency> = {
-      'once_daily': 'once',
-      'twice_daily': 'twice',
-      'three_times_daily': 'three',
-      'four_times_daily': 'four',
-      'every_6_hours': 'every6h',
-      'every_12_hours': 'every12h',
-      'as_needed': 'as_needed',
+      once_daily: 'once',
+      twice_daily: 'twice',
+      three_times_daily: 'three',
+      four_times_daily: 'four',
+      every_6_hours: 'every6h',
+      every_12_hours: 'every12h',
+      as_needed: 'as_needed',
     };
     return mapping[freq];
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveMedication(options?: { addAnother?: boolean }) {
     setError(null);
 
     if (!profileId) {
@@ -163,19 +164,15 @@ export default function AddMedicationPage() {
       return;
     }
 
-    if (!form.name.trim()) {
-      setError('Please enter a medication name.');
-      return;
-    }
-
-    if (!form.dose.trim()) {
-      setError('Please enter a dose.');
+    if (!form.name.trim() || !form.dose.trim()) {
+      setError('Please complete all required fields marked with *.');
       return;
     }
 
     if (
       form.frequency !== 'as_needed' &&
-      (form.times.length === 0 || form.times.some((t) => !/^\d{2}:\d{2}$/.test(t)))
+      (form.times.length === 0 ||
+        form.times.some((t) => !/^\d{2}:\d{2}$/.test(t)))
     ) {
       setError('Please enter at least one valid time (HH:MM).');
       return;
@@ -187,7 +184,9 @@ export default function AddMedicationPage() {
       const meds = getMedicationsForUser(profileId);
       const doses = getDosesForUser(profileId);
 
-      const newMedicationId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const newMedicationId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
 
       const drugsUrl = makeDrugsDotComUrl(form.name);
 
@@ -204,9 +203,13 @@ export default function AddMedicationPage() {
         caregiverAlertEnabled: form.caregiverAlertEnabled,
         caregiverName: form.caregiverName || undefined,
         caregiverEmail: form.caregiverEmail || undefined,
-        alertOnSkipped: form.caregiverAlertEnabled ? form.alertOnSkipped : false,
-        alertOnMissed: form.caregiverAlertEnabled ? form.alertOnMissed : false,
-        drugsUrl: drugsUrl || undefined
+        alertOnSkipped: form.caregiverAlertEnabled
+          ? form.alertOnSkipped
+          : false,
+        alertOnMissed: form.caregiverAlertEnabled
+          ? form.alertOnMissed
+          : false,
+        drugsUrl: drugsUrl || undefined,
       };
 
       const newDoses: DoseInstance[] = [];
@@ -237,17 +240,27 @@ export default function AddMedicationPage() {
       saveMedicationsForUser(profileId, [...meds, newMedication]);
       saveDosesForUser(profileId, [...doses, ...newDoses]);
 
-      router.push('/dashboard');
+      if (options?.addAnother) {
+        setForm(DEFAULT_FORM);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       console.error(err);
       setError(
         err instanceof Error
           ? err.message
-          : 'Something went wrong while saving the medication.'
+          : 'Something went wrong while saving the medication.',
       );
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await saveMedication();
   }
 
   if (!profileId) {
@@ -255,322 +268,373 @@ export default function AddMedicationPage() {
   }
 
   return (
-    <div className="relative min-h-screen px-4 py-8 md:py-12">
-      <main className="mx-auto max-w-3xl">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard')}
-            className="glass-card flex items-center gap-2 rounded-full px-4 py-2.5 text-base font-light text-slate-700 transition hover:bg-white/80"
-          >
-            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
-            Back
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-soft-teal/10">
-              <User className="h-5 w-5 text-soft-teal" strokeWidth={2} />
-            </div>
-            <div className="text-base font-light text-slate-900">
-              {profileName}
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <h1 className="mb-3 text-[32px] font-light text-slate-900 tracking-tight">
-            Add a medication
-          </h1>
-          <p className="text-lg font-light text-slate-600 leading-relaxed">
-            Please copy the details exactly as written on your bottle or from your
-            doctor. This app will never change your instructions.
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-6 flex items-center gap-3 rounded-2xl bg-coral/10 border border-coral/20 px-5 py-4 text-base text-coral">
-            <AlertCircle className="h-5 w-5 flex-shrink-0" strokeWidth={2} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Medication Details Card */}
-          <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8">
-            <div>
-              <h2 className="mb-6 text-xl font-light text-slate-900">Medication Details</h2>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="block text-lg font-light text-slate-900">
-                  Medication name <span className="text-coral">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
-                  placeholder="e.g. Aspirin, Clopidogrel"
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, name: e.target.value }))
-                  }
-                />
+    <main
+      className="min-h-screen"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+      }}
+    >
+      <div className="relative min-h-screen px-4 py-8 md:py-12">
+        <main className="mx-auto max-w-5xl">
+          {/* Header */}
+          <div className="mb-8 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard')}
+              className="glass-card flex items-center gap-2 rounded-full px-4 py-2.5 text-base font-light text-slate-700 transition hover:bg-white/80"
+            >
+              <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+              Back
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
+                <User className="h-5 w-5 text-[#FACC15]" strokeWidth={2} />
               </div>
-
-              <div className="space-y-2">
-                <label className="block text-lg font-light text-slate-900">
-                  Dose (exactly as written) <span className="text-coral">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
-                  placeholder="e.g. 500 mg, 1 tablet"
-                  value={form.dose}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, dose: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-lg font-light text-slate-900">
-                  What is this medication for?{' '}
-                  <span className="text-slate-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
-                  placeholder='e.g. "heart health", "blood thinner", "pain relief"'
-                  value={form.purpose}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, purpose: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-lg font-light text-slate-900">
-                  Doctor&apos;s instructions{' '}
-                  <span className="text-slate-400 font-normal">(optional)</span>
-                </label>
-                <textarea
-                  className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none resize-none"
-                  rows={3}
-                  placeholder="Paste any extra notes from your doctor (for example: Take with food, do not crush, etc.)"
-                  value={form.instructions}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, instructions: e.target.value }))
-                  }
-                />
+              <div className="text-base font-light text-white">
+                {profileName}
               </div>
             </div>
           </div>
 
-          {/* Schedule Card */}
-          <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8">
-            <div>
-              <h2 className="mb-6 text-xl font-light text-slate-900 flex items-center gap-3">
-                <Clock className="h-6 w-6 text-soft-teal" strokeWidth={2} />
-                Schedule
-              </h2>
-            </div>
+          {/* Centered title + description */}
+          <div className="mb-10 text-center">
+            <h1
+              className="mb-3 text-[32px] font-light tracking-tight"
+              style={{
+                color: '#FACC15',
+                WebkitTextFillColor: '#FACC15',
+              }}
+            >
+              Add Your Medications
+            </h1>
+          </div>
 
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <label className="block text-lg font-light text-slate-900">
-                  How often do you take this?
-                </label>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                  {[
-                    { value: 'once_daily', label: 'Once daily' },
-                    { value: 'twice_daily', label: 'Twice daily' },
-                    { value: 'three_times_daily', label: '3× daily' },
-                    { value: 'four_times_daily', label: '4× daily' },
-                    { value: 'every_6_hours', label: 'Every 6 hours' },
-                    { value: 'every_12_hours', label: 'Every 12 hours' },
-                    { value: 'as_needed', label: 'As needed' }
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() =>
-                        handleFrequencyChange(opt.value as FrequencyOption)
-                      }
-                      className={
-                        form.frequency === opt.value
-                          ? 'rounded-full bg-soft-teal px-5 py-3 text-sm font-medium text-white shadow-soft transition'
-                          : 'glass-card rounded-full px-5 py-3 text-sm font-light text-slate-700 transition hover:bg-white/60'
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+          {error && (
+            <div className="mb-6 flex items-center gap-3 rounded-2xl bg-coral/10 border border-coral/20 px-5 py-4 text-base text-coral">
+              <AlertCircle className="h-5 w-5 flex-shrink-0" strokeWidth={2} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* TWO-COLUMN: Medication Details (left) + Schedule (right) */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '24px',
+                alignItems: 'stretch',
+              }}
+            >
+              {/* Medication Details Card */}
+              <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8 h-full flex flex-col min-h-[460px]">
+                <div>
+                  <h2 className="mb-6 text-2xl font-light text-slate-900">
+                    Medication Details
+                  </h2>
                 </div>
-              </div>
 
-              {form.frequency !== 'as_needed' && (
-                <div className="space-y-4">
-                  <label className="block text-lg font-light text-slate-900">
-                    What time(s) do you usually take this?
-                  </label>
-                  <p className="text-sm font-light text-slate-500">
-                    You can adjust these later from the dashboard.
-                  </p>
-                  <div className="space-y-3">
-                    {form.times.map((time, idx) => (
-                      <div key={idx} className="flex items-center gap-3">
-                        <input
-                          type="time"
-                          className="glass-input flex-1 rounded-2xl px-5 py-3 text-lg text-slate-900 transition-all focus:outline-none"
-                          value={time}
-                          onChange={(e) => handleTimeChange(idx, e.target.value)}
-                        />
-                        {form.times.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTime(idx)}
-                            className="flex h-10 w-10 items-center justify-center rounded-full bg-coral/10 text-coral transition hover:bg-coral/20"
-                          >
-                            <X className="h-5 w-5" strokeWidth={2} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                <div className="space-y-6 flex-1">
+                  <div className="space-y-2">
+                    <label className="block text-lg font-light text-slate-900">
+                      Medication name <span className="text-coral">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
+                      placeholder="e.g. Aspirin, Clopidogrel"
+                      value={form.name}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                    />
                   </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-lg font-light text-slate-900">
+                      Dose (exactly as written){' '}
+                      <span className="text-coral">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
+                      placeholder="e.g. 500 mg, 1 tablet"
+                      value={form.dose}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, dose: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-lg font-light text-slate-900">
+                      What is this medication for?{' '}
+                      <span className="text-slate-400 font-normal">
+                        (optional)
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
+                      placeholder='"heart health", "blood thinner", "pain relief"'
+                      value={form.purpose}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          purpose: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-lg font-light text-slate-900">
+                      Doctor&apos;s instructions{' '}
+                      <span className="text-slate-400 font-normal">
+                        (optional)
+                      </span>
+                    </label>
+                    <textarea
+                      className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none resize-none"
+                      rows={3}
+                      placeholder="Paste any extra notes from your doctor (e.g. Take with food, do not crush, etc.)"
+                      value={form.instructions}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          instructions: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                {/* Save & Add another – directly under Medication Details */}
+                <div className="pt-4">
                   <button
                     type="button"
-                    onClick={handleAddTime}
-                    className="flex items-center gap-2 text-sm font-medium text-soft-teal hover:text-soft-teal/80 transition"
+                    disabled={saving}
+                    onClick={() => saveMedication({ addAnother: true })}
+                    className="w-full rounded-full px-6 py-3 text-base font-medium shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gray-400"
+                    style={{
+                      backgroundColor: '#e5e7eb', // grey
+                      color: '#111827', // black-ish
+                    }}
                   >
-                    <Plus className="h-4 w-4" strokeWidth={2} />
-                    Add another time
+                    {saving ? 'Saving…' : 'Save & Add another medication'}
                   </button>
                 </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="block text-lg font-light text-slate-900 flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-soft-teal" strokeWidth={2} />
-                  End date <span className="text-slate-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="date"
-                  className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 transition-all focus:outline-none"
-                  value={form.endDate}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, endDate: e.target.value }))
-                  }
-                />
-                <p className="text-sm font-light text-slate-500">
-                  Leave empty if this medication is ongoing.
-                </p>
               </div>
-            </div>
-          </div>
 
-          {/* Caregiver Alerts Card */}
-          <div className="glass-card rounded-3xl p-8 md:p-10 space-y-6">
-            <div>
-              <h2 className="mb-6 text-xl font-light text-slate-900 flex items-center gap-3">
-                <AlertCircle className="h-6 w-6 text-soft-teal" strokeWidth={2} />
-                Caregiver alerts <span className="text-slate-400 font-normal">(optional)</span>
-              </h2>
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.caregiverAlertEnabled}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    caregiverAlertEnabled: e.target.checked
-                  }))
-                }
-                className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
-              />
-              <span className="text-base font-light text-slate-700">
-                Email someone if doses are missed or skipped
-              </span>
-            </label>
-
-            {form.caregiverAlertEnabled && (
-              <div className="space-y-5 pt-4 border-t border-white/40">
-                <div className="space-y-2">
-                  <label className="block text-base font-light text-slate-900">
-                    Caregiver&apos;s name
-                  </label>
-                  <input
-                    type="text"
-                    className="glass-input w-full rounded-2xl px-5 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
-                    value={form.caregiverName}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        caregiverName: e.target.value
-                      }))
-                    }
-                  />
+              {/* Schedule Card */}
+              <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8 h-full flex flex-col min-h-[460px]">
+                <div>
+                  <h2 className="mb-6 text-2xl font-light text-slate-900 flex items-center gap-4">
+                    <Clock className="h-6 w-6 text-soft-teal" strokeWidth={2} />
+                    Schedule
+                  </h2>
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-base font-light text-slate-900">
-                    Caregiver&apos;s email
-                  </label>
-                  <input
-                    type="email"
-                    className="glass-input w-full rounded-2xl px-5 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
-                    value={form.caregiverEmail}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        caregiverEmail: e.target.value
-                      }))
-                    }
-                    placeholder="name@example.com"
-                  />
-                </div>
-                <div className="space-y-3">
-                  <div className="text-base font-light text-slate-900">
-                    When should we email them?
+
+                <div className="space-y-6 flex-1">
+                  <div className="space-y-3">
+                    <label className="block text-lg font-light text-slate-900">
+                      How often do you take this?
+                    </label>
+                    <select
+                      className="glass-input w-full rounded-2xl px-5 py-3 text-base text-slate-900 transition-all focus:outline-none"
+                      value={form.frequency}
+                      onChange={(e) =>
+                        handleFrequencyChange(e.target.value as FrequencyOption)
+                      }
+                    >
+                      <option value="once_daily">Once daily</option>
+                      <option value="twice_daily">Twice daily</option>
+                      <option value="three_times_daily">3× daily</option>
+                      <option value="four_times_daily">4× daily</option>
+                      <option value="every_6_hours">Every 6 hours</option>
+                      <option value="every_12_hours">Every 12 hours</option>
+                      <option value="as_needed">As needed</option>
+                    </select>
                   </div>
-                  <label className="flex items-center gap-3 cursor-pointer">
+
+                  {form.frequency !== 'as_needed' && (
+                    <div className="space-y-4">
+                      <label className="block text-lg font-light text-slate-900">
+                        What time(s) do you usually take this?
+                      </label>
+                      <div className="space-y-3">
+                        {form.times.map((time, idx) => (
+                          <div key={idx} className="flex items-center gap-3">
+                            <input
+                              type="time"
+                              className="glass-input flex-1 rounded-2xl px-5 py-3 text-lg text-slate-900 transition-all focus:outline-none"
+                              value={time}
+                              onChange={(e) =>
+                                handleTimeChange(idx, e.target.value)
+                              }
+                            />
+                            {form.times.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTime(idx)}
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-coral/10 text-coral transition hover:bg-coral/20"
+                              >
+                                <X className="h-5 w-5" strokeWidth={2} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddTime}
+                        className="flex items-center gap-2 text-sm font-medium text-soft-teal hover:text-soft-teal/80 transition"
+                      >
+                        <Plus className="h-4 w-4" strokeWidth={2} />
+                        Add another time
+                      </button>
+
+                      <div className="h-4" />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="block text-lg font-light text-slate-900 flex items-center gap-2">
+                      <Calendar
+                        className="h-5 w-5 text-soft-teal"
+                        strokeWidth={2}
+                      />
+                      End date{' '}
+                      <span className="text-slate-400 font-normal">
+                        (optional)
+                      </span>
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={form.alertOnSkipped}
+                      type="date"
+                      className="glass-input w-full rounded-2xl px-6 py-4 text-lg text-slate-900 transition-all focus:outline-none"
+                      value={form.endDate}
                       onChange={(e) =>
                         setForm((prev) => ({
                           ...prev,
-                          alertOnSkipped: e.target.checked
+                          endDate: e.target.value,
                         }))
                       }
-                      className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
                     />
-                    <span className="text-sm font-light text-slate-600">
-                      When a dose is marked as skipped
-                    </span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.alertOnMissed}
-                      onChange={(e) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          alertOnMissed: e.target.checked
-                        }))
-                      }
-                      className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
-                    />
-                    <span className="text-sm font-light text-slate-600">
-                      When a dose is missed (no response after reminder)
-                    </span>
-                  </label>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Submit Buttons */}
+            {/* Caregiver Alerts Card */}
+            <div className="glass-card rounded-3xl p-8 md:p-10 space-y-6">
+              <div className="text-center">
+                <h2 className="mb-2 text-xl font-light text-slate-900 flex items-center justify-center gap-4">
+                  <AlertCircle
+                    className="h-6 w-6 text-soft-teal"
+                    strokeWidth={2}
+                  />
+                  Caregiver Alerts (optional)
+                </h2>
+              </div>
+
+              <label className="flex items-center justify-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.caregiverAlertEnabled}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      caregiverAlertEnabled: e.target.checked,
+                    }))
+                  }
+                  className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
+                />
+                <span className="text-base font-light text-slate-700 text-center">
+                  Email someone if doses are missed or skipped
+                </span>
+              </label>
+
+              {form.caregiverAlertEnabled && (
+                <div className="space-y-5 pt-4 border-t border-white/40">
+                  <div className="space-y-2">
+                    <label className="block text-base font-light text-slate-900">
+                      Caregiver&apos;s name
+                    </label>
+                    <input
+                      type="text"
+                      className="glass-input w-full rounded-2xl px-5 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
+                      value={form.caregiverName}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          caregiverName: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-base font-light text-slate-900">
+                      Caregiver&apos;s email
+                    </label>
+                    <input
+                      type="email"
+                      className="glass-input w-full rounded-2xl px-5 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none"
+                      value={form.caregiverEmail}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          caregiverEmail: e.target.value,
+                        }))
+                      }
+                      placeholder="name@example.com"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-base font-light text-slate-900">
+                      When should we email them?
+                    </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.alertOnSkipped}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            alertOnSkipped: e.target.checked,
+                          }))
+                        }
+                        className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
+                      />
+                      <span className="text-sm font-light text-slate-600">
+                        When a dose is marked as skipped
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.alertOnMissed}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            alertOnMissed: e.target.checked,
+                          }))
+                        }
+                        className="h-5 w-5 rounded border-slate-300 text-soft-teal focus:ring-soft-teal"
+                      />
+                      <span className="text-sm font-light text-slate-600">
+                        When a dose is missed (no response after reminder)
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Submit Buttons */}
+                      {/* Submit Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 sm:justify-end pt-4">
             <button
               type="button"
@@ -579,16 +643,23 @@ export default function AddMedicationPage() {
             >
               Cancel
             </button>
+
+            {/* ALWAYS goes to dashboard, no validation/saving required */}
             <button
-              type="submit"
-              disabled={saving}
-              className="btn-primary rounded-full px-8 py-4 text-base font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-soft-teal"
+              type="button"
+              onClick={() => router.push('/dashboard')}
+              className="rounded-full px-8 py-4 text-base font-medium shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-yellow-400"
+              style={{
+                backgroundColor: '#FACC15',
+                color: '#111827',
+              }}
             >
-              {saving ? 'Saving…' : 'Save medication'}
+              Go to Dashboard
             </button>
           </div>
-        </form>
-      </main>
-    </div>
+          </form>
+        </main>
+      </div>
+    </main>
   );
 }
