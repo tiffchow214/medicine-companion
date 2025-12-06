@@ -1,12 +1,13 @@
 'use client';
 
+import type React from 'react';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { X, ExternalLink, AlertTriangle, FileText } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 import { fetchDrugInfo } from '@/lib/drugInfo';
 import {
   getMedicationInfoCache,
-  setMedicationInfoCache
+  setMedicationInfoCache,
 } from '@/lib/storage';
 
 interface MedicationInfoModalProps {
@@ -17,66 +18,87 @@ interface MedicationInfoModalProps {
 
 type TabType = 'general' | 'usage' | 'side-effects';
 
-function buildDrugsComUrl(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-');
-
-  return `https://www.drugs.com/${slug}.html`;
-}
+type TabContent = {
+  general: string;
+  usage: string;
+  sideEffects: string;
+};
 
 export function MedicationInfoModal({
   open,
   onClose,
-  medicationName
+  medicationName,
 }: MedicationInfoModalProps) {
-  const [markdown, setMarkdown] = useState<string | null>(null);
+  const [content, setContent] = useState<TabContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('general');
 
-  const drugsUrl = buildDrugsComUrl(medicationName);
+  // simple cache key
+  const cacheKey = medicationName.trim().toLowerCase();
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
 
-    if (!drugsUrl) {
+    console.log('[MedicationInfoModal] effect – fetching info for', medicationName);
+
+    if (!medicationName || !cacheKey) {
       setError('Medication name is missing or invalid.');
       return;
     }
 
-    // Check cache first
-    const cached = getMedicationInfoCache(drugsUrl);
+    // 1) check cache
+    const cached = getMedicationInfoCache(cacheKey);
+
     if (cached) {
-      setMarkdown(cached.markdown);
-      setLoading(false);
-      return;
+      // support new cache shape (tabbed) and old shape (single markdown)
+      if (cached.general && cached.usage && cached.sideEffects) {
+        setContent({
+          general: cached.general,
+          usage: cached.usage,
+          sideEffects: cached.sideEffects,
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (cached.markdown) {
+        // fallback: show same text in all tabs
+        setContent({
+          general: cached.markdown,
+          usage: cached.markdown,
+          sideEffects: cached.markdown,
+        });
+        setLoading(false);
+        return;
+      }
     }
 
-    // Fetch from API
+    // 2) fetch from backend (OpenFDA)
     setLoading(true);
     setError(null);
+
     fetchDrugInfo(medicationName)
       .then((data) => {
-        if (!data.markdown) {
-          setError(
-            'Information not available. Please check the spelling or ask your pharmacist.'
-          );
-          return;
-        }
-        setMarkdown(data.markdown);
-        // Cache it using the URL as key
-        setMedicationInfoCache(data.source_url, {
+        const nextContent: TabContent = {
+          general: data.general_markdown,
+          usage: data.usage_markdown,
+          sideEffects: data.side_effects_markdown,
+        };
+
+        setContent(nextContent);
+
+        // store in cache for next time
+        setMedicationInfoCache(cacheKey, {
           url: data.source_url,
-          markdown: data.markdown,
-          fetchedAt: new Date().toISOString()
+          general: nextContent.general,
+          usage: nextContent.usage,
+          sideEffects: nextContent.sideEffects,
+          fetchedAt: new Date().toISOString(),
         });
       })
       .catch((err) => {
+        console.error('[MedicationInfoModal] fetch error', err);
         setError(
           err instanceof Error
             ? err.message
@@ -86,105 +108,180 @@ export function MedicationInfoModal({
       .finally(() => {
         setLoading(false);
       });
-  }, [open, drugsUrl, medicationName]);
+  }, [open, cacheKey, medicationName]);
 
   if (!open) return null;
 
-  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'general', label: 'General', icon: <FileText className="h-4 w-4" strokeWidth={2} /> },
-    { id: 'usage', label: 'Usage', icon: <FileText className="h-4 w-4" strokeWidth={2} /> },
-    { id: 'side-effects', label: 'Side Effects', icon: <AlertTriangle className="h-4 w-4" strokeWidth={2} /> },
-  ];
+  // ---------- inline styles to GUARANTEE visibility ----------
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  };
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: '#ffffff',
+    borderRadius: '24px',
+    padding: '24px',
+    maxWidth: '800px',
+    width: '100%',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    boxShadow: '0 20px 60px rgba(15, 23, 42, 0.35)',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const scrollAreaStyle: React.CSSProperties = {
+    flex: 1,
+    overflowY: 'auto',
+    marginTop: '16px',
+    paddingRight: '8px',
+  };
+
+  // decide which markdown to show for the current tab
+  let activeMarkdown: string | null = null;
+  if (content) {
+    if (activeTab === 'general') activeMarkdown = content.general;
+    else if (activeTab === 'usage') activeMarkdown = content.usage;
+    else activeMarkdown = content.sideEffects;
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="med-info-title"
-    >
-      <div className="glass-card relative h-[90vh] w-full max-w-4xl rounded-3xl p-8 shadow-glass-lg border border-white/50 flex flex-col">
-        <button
-          onClick={onClose}
-          className="absolute right-6 top-6 text-slate-400 hover:text-slate-600 transition z-10"
-          aria-label="Close"
+    <div style={overlayStyle}>
+      <div style={cardStyle}>
+        {/* header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: 12,
+          }}
         >
-          <X className="h-6 w-6" strokeWidth={2} />
-        </button>
-
-        <div className="mb-6">
-          <h2
-            id="med-info-title"
-            className="mb-2 text-[32px] font-light text-slate-900 tracking-tight"
-          >
-            About {medicationName}
-          </h2>
-
-          {/* Disclaimer */}
-          <div className="rounded-2xl border border-coral/30 bg-coral/10 p-4">
-            <p className="text-base font-light text-coral flex items-start gap-2">
-              <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" strokeWidth={2} />
-              <span>
-                This is educational information only. NOT medical advice. Always
-                consult your doctor.
-              </span>
+          <div>
+            <h2
+              id="med-info-title"
+              style={{
+                margin: 0,
+                marginBottom: 4,
+                fontSize: 28,
+                fontWeight: 500,
+                color: '#0f172a',
+              }}
+            >
+              About {medicationName}
+            </h2>
+            <p style={{ margin: 0, fontSize: 14, color: '#6b7280' }}>
+              Powered by OpenFDA drug label data. This is NOT medical advice.
             </p>
           </div>
+
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 4,
+              color: '#9ca3af',
+            }}
+          >
+            <X size={24} />
+          </button>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-6 flex gap-2 border-b border-white/40">
-          {tabs.map((tab) => (
+        {/* disclaimer */}
+        <div
+          style={{
+            borderRadius: 16,
+            border: '1px solid rgba(248, 113, 113, 0.3)',
+            backgroundColor: 'rgba(248, 113, 113, 0.08)',
+            padding: 12,
+            display: 'flex',
+            gap: 8,
+            alignItems: 'flex-start',
+          }}
+        >
+          <AlertTriangle size={18} style={{ marginTop: 2, color: '#b91c1c' }} />
+          <p style={{ margin: 0, fontSize: 14, color: '#b91c1c' }}>
+            This information is for education only. Always follow the advice of
+            your doctor or pharmacist.
+          </p>
+        </div>
+
+        {/* tabs */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 16,
+            borderBottom: '1px solid #e5e7eb',
+          }}
+        >
+          {(['general', 'usage', 'side-effects'] as TabType[]).map((tab) => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-6 py-3 text-base font-light transition border-b-2 ${
-                activeTab === tab.id
-                  ? 'border-soft-teal text-soft-teal'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                padding: '8px 16px',
+                borderBottom:
+                  activeTab === tab ? '2px solid #14b8a6' : '2px solid transparent',
+                color: activeTab === tab ? '#14b8a6' : '#6b7280',
+                cursor: 'pointer',
+                fontSize: 14,
+              }}
             >
-              {tab.icon}
-              {tab.label}
+              {tab === 'general'
+                ? 'General'
+                : tab === 'usage'
+                ? 'Usage & directions'
+                : 'Side effects'}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto pr-2">
+        {/* content area */}
+        <div style={scrollAreaStyle}>
           {loading && (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-lg font-light text-slate-500">Loading information...</div>
-            </div>
+            <p
+              style={{
+                fontSize: 16,
+                color: '#6b7280',
+                textAlign: 'center',
+                marginTop: 40,
+              }}
+            >
+              Loading information...
+            </p>
           )}
 
-          {error && (
-            <div className="rounded-2xl border border-coral/30 bg-coral/10 p-6">
-              <p className="text-base font-light text-coral">
-                {error ||
-                  'Information not available. Please check the spelling or ask your pharmacist.'}
-              </p>
-            </div>
+          {error && !loading && (
+            <p style={{ fontSize: 15, color: '#b91c1c' }}>
+              {error ||
+                'Information not available. Please check the spelling or ask your pharmacist.'}
+            </p>
           )}
 
-          {markdown && !error && (
-            <div className="prose prose-lg max-w-none prose-headings:font-light prose-headings:text-slate-900 prose-p:font-light prose-p:text-slate-700 prose-a:text-soft-teal prose-strong:font-normal">
-              <ReactMarkdown>{markdown}</ReactMarkdown>
+          {activeMarkdown && !error && !loading && (
+            <div
+              style={{
+                fontSize: 15,
+                color: '#111827',
+                lineHeight: 1.6,
+              }}
+            >
+              {/* ReactMarkdown will render our bullet lists nicely */}
+              <ReactMarkdown>{activeMarkdown}</ReactMarkdown>
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-6 pt-6 border-t border-white/40">
-          <a
-            href={drugsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-base font-light text-soft-teal hover:text-soft-teal/80 transition underline underline-offset-2"
-          >
-            View full information on drugs.com
-            <ExternalLink className="h-4 w-4" strokeWidth={2} />
-          </a>
         </div>
       </div>
     </div>

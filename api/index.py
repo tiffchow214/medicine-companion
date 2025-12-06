@@ -5,10 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import OpenAI
-from firecrawl import Firecrawl
 from dotenv import load_dotenv
+from typing import Any
 import os
 import requests
+import httpx
+import urllib.parse
+import re  # NEW: for simple bullet formatting
 
 # ---------------------------------------------------------
 # Load environment variables
@@ -16,7 +19,6 @@ import requests
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_FROM_EMAIL = os.getenv(
@@ -27,21 +29,19 @@ RESEND_FROM_EMAIL = os.getenv(
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set. Add it to your .env file or shell env.")
 
-if not FIRECRAWL_API_KEY:
-    raise RuntimeError("FIRECRAWL_API_KEY is not set. Add it to your .env file or shell env.")
-
 if not ELEVENLABS_API_KEY:
     print("⚠️ ELEVENLABS_API_KEY is not set. /api/reminder-audio will fail until you set it.")
 
 if not RESEND_API_KEY:
     print("⚠️ RESEND_API_KEY is not set. /api/caregiver-alert will fail until you set it.")
 
+# OpenFDA drug label endpoint
+OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
 
 # ---------------------------------------------------------
 # Clients
 # ---------------------------------------------------------
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
-firecrawl_client = Firecrawl(api_key=FIRECRAWL_API_KEY)
 
 # ---------------------------------------------------------
 # FastAPI app + CORS
@@ -60,7 +60,16 @@ app.add_middleware(
 # Pydantic models
 # ---------------------------------------------------------
 class DrugInfoRequest(BaseModel):
-    url: str  # e.g. "https://www.drugs.com/aspirin.html"
+    # Name of the medication, e.g. "Aspirin"
+    medication_name: str
+
+
+class DrugInfoResponse(BaseModel):
+    medication_name: str
+    general_markdown: str
+    usage_markdown: str
+    side_effects_markdown: str
+    source_url: str
 
 
 class ReminderAudioRequest(BaseModel):
@@ -94,6 +103,10 @@ class PersonalizedReminderRequest(BaseModel):
     adherence: AdherenceStats
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
 # ---------------------------------------------------------
 # Health check
 # ---------------------------------------------------------
@@ -109,20 +122,6 @@ def root():
 def personalized_reminder(req: PersonalizedReminderRequest):
     """
     Generate a warm, personalized reminder sentence for this user/medication.
-
-    Example request:
-    {
-      "user_name": "Tiffany",
-      "medication_name": "Aspirin",
-      "purpose": "pain relief",
-      "adherence": {
-        "current_streak": 7,
-        "missed_in_last_week": 0
-      }
-    }
-
-    Returns:
-    { "message": "Good morning Tiffany! ..." }
     """
     try:
         completion = openai_client.chat.completions.create(
@@ -166,45 +165,163 @@ def personalized_reminder(req: PersonalizedReminderRequest):
 
 
 # ---------------------------------------------------------
-# Firecrawl: drug information from drugs.com
+# Helper functions for OpenFDA drug info
 # ---------------------------------------------------------
-@app.post("/api/drug-info")
-def get_drug_info(body: DrugInfoRequest):
+def _first_text(value: Any) -> str:
     """
-    Given a drugs.com URL, fetch a cleaned markdown summary via Firecrawl.
+    OpenFDA often returns fields as lists of strings.
+    This helper safely returns the first string, or "".
+    """
+    if isinstance(value, list) and value:
+        return str(value[0])
+    if isinstance(value, str):
+        return value
+    return ""
 
-    Example body:
-    {
-        "url": "https://www.drugs.com/aspirin.html"
-    }
+
+def _shorten(text: str, max_chars: int = 1200) -> str:
     """
+    Keep sections reasonably short for the modal.
+    """
+    if len(text) <= max_chars:
+        return text
+    trimmed = text[:max_chars]
+    if "." in trimmed:
+        trimmed = trimmed.rsplit(".", 1)[0] + "."
+    return trimmed
+
+
+def _to_bullets(text: str, max_items: int = 6) -> str:
+    """
+    Convert a long paragraph into simple bullet points for easier reading.
+    Very naive: split on sentence boundaries and prefix with "- ".
+    """
+    if not text:
+        return "Not available."
+
+    # Basic sentence split
+    sentences = re.split(r"(?<=[.?!])\s+", text)
+    bullets = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        bullets.append(f"- {s}")
+        if len(bullets) >= max_items:
+            break
+
+    if not bullets:
+        return "Not available."
+    return "\n".join(bullets)
+
+
+# ---------------------------------------------------------
+# OpenFDA: drug information
+# ---------------------------------------------------------
+@app.post("/api/drug-info", response_model=DrugInfoResponse)
+async def get_drug_info(body: DrugInfoRequest) -> DrugInfoResponse:
+    """
+    Given a medication name, fetch label info from OpenFDA and
+    return markdown for three sections:
+
+      - general_markdown (what it is for + warnings)
+      - usage_markdown   (how to use / dosage)
+      - side_effects_markdown (possible side effects)
+    """
+    name = body.medication_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Medication name is required.")
+
+    # Search by brand OR generic name
+    search_query = f'openfda.brand_name:"{name}"+openfda.generic_name:"{name}"'
+    params = {"search": search_query, "limit": 1}
+
     try:
-        doc = firecrawl_client.scrape(
-            body.url,
-            formats=["markdown"],
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(OPENFDA_LABEL_URL, params=params)
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error contacting OpenFDA: {exc}",
         )
 
-        # Firecrawl client may return an object with .markdown
-        # or a dict with 'markdown'
-        markdown = getattr(doc, "markdown", None)
-        if markdown is None and isinstance(doc, dict):
-            markdown = doc.get("markdown")
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail="OpenFDA request failed.",
+        )
 
-        if not markdown:
-            raise HTTPException(
-                status_code=500,
-                detail="No markdown returned from Firecrawl",
-            )
+    data = resp.json()
+    results = data.get("results") or []
+    if not results:
+        raise HTTPException(
+            status_code=404,
+            detail="No information found for this medication.",
+        )
 
-        return {
-            "source_url": body.url,
-            "markdown": markdown,
-        }
+    label = results[0]
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Firecrawl error: {str(e)}")
+    # Map OpenFDA fields → four raw sections
+    uses_raw = _first_text(label.get("indications_and_usage")) or "Not available."
+    side_effects_raw = (
+        _first_text(label.get("adverse_reactions"))
+        or _first_text(label.get("side_effects"))
+        or "Not available."
+    )
+    warnings_raw = (
+        _first_text(label.get("warnings"))
+        or _first_text(label.get("warnings_and_cautions"))
+        or _first_text(label.get("boxed_warning"))
+        or "Not available."
+    )
+    dosage_raw = (
+        _first_text(label.get("dosage_and_administration")) or "Not available."
+    )
+
+    # Shorten and convert to bullets
+    uses = _to_bullets(_shorten(uses_raw))
+    side_effects = _to_bullets(_shorten(side_effects_raw))
+    warnings = _to_bullets(_shorten(warnings_raw))
+    dosage = _to_bullets(_shorten(dosage_raw))
+
+    # Build markdown per tab
+    general_markdown = (
+        "### What this medicine is for\n\n"
+        f"{uses}\n\n"
+        "### Important warnings\n\n"
+        f"{warnings}\n\n"
+        "_Source: U.S. FDA drug label (OpenFDA). This is **not** medical advice. "
+        "Always talk to your doctor or pharmacist about your medicines._"
+    )
+
+    usage_markdown = (
+        "### How to use this medicine\n\n"
+        f"{dosage}\n\n"
+        "_This is a simplified summary. Follow the instructions from your "
+        "doctor, pharmacist, or the label on your medicine._"
+    )
+
+    side_effects_markdown = (
+        "### Possible side effects\n\n"
+        f"{side_effects}\n\n"
+        "_If you feel unwell, have trouble breathing, chest pain, or any symptoms that "
+        "worry you, seek medical help immediately. This list is not complete._"
+    )
+
+    encoded_name = urllib.parse.quote(name)
+    source_url = (
+        "https://api.fda.gov/drug/label.json"
+        f"?search=openfda.brand_name:{encoded_name}"
+        f"+openfda.generic_name:{encoded_name}&limit=1"
+    )
+
+    return DrugInfoResponse(
+        medication_name=name,
+        general_markdown=general_markdown,
+        usage_markdown=usage_markdown,
+        side_effects_markdown=side_effects_markdown,
+        source_url=source_url,
+    )
 
 
 # ---------------------------------------------------------
@@ -216,11 +333,7 @@ DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # replace with a voice from your Elev
 @app.post("/api/reminder-audio")
 def reminder_audio(body: ReminderAudioRequest):
     """
-    Generate a short reminder audio clip like:
-
-    "Hey Tiffany, it's time to take your Aspirin. Please take 500mg, 1 tablet."
-
-    The frontend should call this *at the time of the reminder* and play the returned audio.
+    Generate a short reminder audio clip.
     """
     if not ELEVENLABS_API_KEY:
         raise HTTPException(
@@ -230,12 +343,10 @@ def reminder_audio(body: ReminderAudioRequest):
 
     # Build the spoken script
     if body.personalized_message:
-        # Use personalized message if provided
         script = body.personalized_message
         if body.dose:
             script += f" Please take {body.dose}."
     else:
-        # Use generic template
         script = f"Hey {body.user_name}, it's time to take your {body.medication_name}."
         if body.dose:
             script += f" Please take {body.dose}."
@@ -294,10 +405,6 @@ def reminder_audio(body: ReminderAudioRequest):
 def caregiver_alert(body: CaregiverAlertRequest, background_tasks: BackgroundTasks):
     """
     Send an email to a caregiver when a dose is missed or skipped.
-
-    The FRONTEND decides:
-    - when a dose is 'missed' or 'skipped'
-    - what info to send
     """
     if not RESEND_API_KEY:
         raise HTTPException(
@@ -365,7 +472,35 @@ def caregiver_alert(body: CaregiverAlertRequest, background_tasks: BackgroundTas
         except Exception as e:
             print(f"Error sending Resend email: {e}")
 
-    # send in the background so we don't block the response
     background_tasks.add_task(_send_email)
 
     return {"status": "queued"}
+
+
+# ---------------------------------------------------------
+# Simple Chat endpoint for simplifying instructions / questions
+# ---------------------------------------------------------
+@app.post("/api/chat")
+def chat_endpoint(req: ChatRequest):
+    """
+    Very small, constrained chat endpoint used by the frontend.
+    """
+    try:
+        completion = openai_client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": req.message,
+                }
+            ],
+            temperature=0.2,
+        )
+
+        reply = completion.choices[0].message.content or ""
+        return {"reply": reply.strip()}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error in /api/chat: {str(e)}",
+        )

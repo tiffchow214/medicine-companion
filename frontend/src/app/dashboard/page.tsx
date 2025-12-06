@@ -1,8 +1,12 @@
 'use client';
 
+import type React from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock, Check, X, CalendarDays, User, Pill } from 'lucide-react';
+
+// Modal for drug info
+import { MedicationInfoModal } from '@/components/MedicationInfoModal';
 
 import {
   getActiveProfile,
@@ -23,6 +27,11 @@ type TimeGroup =
   | 'Bedtime'
   | 'As Needed'
   | 'Other';
+
+const whiteText: React.CSSProperties = {
+  color: '#FFFFFF',
+  WebkitTextFillColor: '#FFFFFF',
+};
 
 function getWeekDays(center: Date) {
   const days: Date[] = [];
@@ -45,7 +54,12 @@ function getTimeGroup(dose: DoseInstance, medication?: Medication): TimeGroup {
   return 'Other';
 }
 
-const MED_COLOURS = [
+/**
+ * Colour palette for medications.
+ * Same index used for background + text so each medicine has
+ * a consistent colour identity.
+ */
+const MED_BG_CLASSES = [
   'bg-blue-400',
   'bg-amber-400',
   'bg-red-400',
@@ -54,11 +68,30 @@ const MED_COLOURS = [
   'bg-pink-400',
 ];
 
-function getMedColor(medId: string) {
-  let sum = 0;
-  for (const ch of medId) sum += ch.charCodeAt(0);
-  return MED_COLOURS[sum % MED_COLOURS.length];
+const MED_TEXT_COLORS = [
+  '#60a5fa', // blue-400
+  '#fbbf24', // amber-400
+  '#f87171', // red-400
+  '#818cf8', // indigo-400
+  '#34d399', // emerald-400
+  '#f472b6', // pink-400
+];
+
+function getMedColors(key: string) {
+  // Weighted sum hash to reduce collisions between different names
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash += (i + 1) * key.charCodeAt(i);
+  }
+
+  const idx = Math.abs(hash) % MED_BG_CLASSES.length;
+
+  return {
+    bgClass: MED_BG_CLASSES[idx],
+    textColor: MED_TEXT_COLORS[idx],
+  };
 }
+
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -97,8 +130,7 @@ function WeekSelector({ selectedDay, setSelectedDay }: WeekSelectorProps) {
           const todayOnly =
             isToday && !isSelected ? 'border-2 border-[#FACC15] font-bold' : '';
 
-          // Explicit black text for weekly circles
-          const textStyle: React.CSSProperties = {
+          const circleText: React.CSSProperties = {
             color: '#000000',
             WebkitTextFillColor: '#000000',
           };
@@ -110,15 +142,12 @@ function WeekSelector({ selectedDay, setSelectedDay }: WeekSelectorProps) {
               onClick={() => setSelectedDay(date)}
               className={`${base} ${isSelected ? active : inactive} ${todayOnly}`}
             >
-              <span
-                className="text-xs font-semibold"
-                style={textStyle}
-              >
+              <span className="text-xs font-semibold" style={circleText}>
                 {dayName}
               </span>
               <span
                 className="text-lg font-extrabold leading-tight"
-                style={textStyle}
+                style={circleText}
               >
                 {dayNum}
               </span>
@@ -137,10 +166,20 @@ interface DoseCardProps {
   medication: Medication;
   onMarkTaken: (dose: DoseInstance) => void;
   onSkip: (dose: DoseInstance) => void;
+  onLearnMore: (medication: Medication) => void;
 }
 
-function DoseCard({ dose, medication, onMarkTaken, onSkip }: DoseCardProps) {
-  const medColorClass = getMedColor(medication.id);
+function DoseCard({
+  dose,
+  medication,
+  onMarkTaken,
+  onSkip,
+  onLearnMore,
+}: DoseCardProps) {
+  // same name → same colours
+  const { bgClass: medColorClass, textColor: medTextColor } = getMedColors(
+    medication.name,
+  );
 
   let statusText: string;
   let statusClasses: string;
@@ -164,7 +203,7 @@ function DoseCard({ dose, medication, onMarkTaken, onSkip }: DoseCardProps) {
       break;
     case 'due':
       statusText = 'Due Now';
-      statusClasses = 'bg-amber-400/90 text-slate-900';
+      statusClasses = 'bg-amber-400/90 text-white';
       Icon = Clock;
       break;
     default:
@@ -181,63 +220,104 @@ function DoseCard({ dose, medication, onMarkTaken, onSkip }: DoseCardProps) {
 
   const isActionable = dose.status !== 'taken';
 
+  // force white text on the status pill
+  const statusTextStyle: React.CSSProperties = {
+    color: '#FFFFFF',
+    WebkitTextFillColor: '#FFFFFF',
+  };
+
   return (
     <div className="flex w-full overflow-hidden rounded-2xl shadow-xl bg-black/70 backdrop-blur-sm border border-white/15">
       {/* Color bar */}
       <div className={`w-3 ${medColorClass} flex-shrink-0`} />
 
       <div className="flex-grow p-4 space-y-2">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-xs font-semibold uppercase opacity-80 flex items-center">
+        {/* Top row: time, med name + Learn more, status pill */}
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex-1">
+            <p
+              className="text-xs font-semibold uppercase opacity-80 flex items-center"
+              style={whiteText}
+            >
               <Clock className="w-3 h-3 mr-1" />
               {timeStr}
             </p>
-            <h3 className="text-xl font-bold leading-tight mt-1">
-              {medication.name}
-            </h3>
-            <p className="text-sm mt-0.5">{medication.dose}</p>
+
+            <div className="mt-1 flex items-center gap-3">
+              <h3
+                className="text-xl font-bold leading-tight"
+                style={{
+                  color: medTextColor,
+                  WebkitTextFillColor: medTextColor,
+                }}
+              >
+                {medication.name}
+              </h3>
+
+              {/* Learn more – yellow, black text, inline with med name */}
+              <button
+                type="button"
+                onClick={() => onLearnMore(medication)}
+                className="px-3 py-1.5 rounded-full bg-[#FACC15] text-black border border-amber-300 hover:bg-[#eab308] text-sm font-semibold transition-colors"
+              >
+                Learn more
+              </button>
+            </div>
+
+            <p className="text-sm mt-0.5" style={whiteText}>
+              {medication.dose}
+            </p>
           </div>
+
           <div
             className={`px-3 py-1 rounded-full font-bold text-sm flex items-center ${statusClasses}`}
+            style={statusTextStyle}
           >
             <Icon className="w-4 h-4 mr-1" />
             {statusText}
           </div>
         </div>
 
+        {/* Bottom row: notes + Mark Taken / Skip */}
         <div className="pt-2 flex justify-between items-center border-t border-dashed border-white/20">
-          <p className="text-sm italic">
+          <p className="text-sm italic" style={whiteText}>
             {medication.instructions || medication.purpose || 'No extra notes.'}
           </p>
 
-          {isActionable ? (
-            <div className="flex gap-2 text-sm font-semibold">
+          <div className="flex gap-2 text-sm font-semibold items-center">
+            {isActionable ? (
+              <>
+                {/* Mark Taken – green background, black text */}
+                <button
+                  type="button"
+                  onClick={() => onMarkTaken(dose)}
+                  className="px-4 py-2 rounded-full border border-emerald-500 hover:bg-emerald-300 transition-colors"
+                  style={{ backgroundColor: '#22c55e', color: '#000000' }}
+                >
+                  Mark Taken
+                </button>
+
+                {/* Skip – red background, black text */}
+                <button
+                  type="button"
+                  onClick={() => onSkip(dose)}
+                  className="px-4 py-2 rounded-full border border-rose-500 hover:bg-rose-300 transition-colors"
+                  style={{ backgroundColor: '#f87171', color: '#000000' }}
+                >
+                  Skip
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={() => onMarkTaken(dose)}
-                className="px-4 py-2 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                disabled
+                className="text-sm font-semibold text-emerald-200 flex items-center opacity-80"
               >
-                Mark Taken
+                <Check className="w-4 h-4 mr-1" />
+                Logged
               </button>
-              <button
-                type="button"
-                onClick={() => onSkip(dose)}
-                className="px-4 py-2 rounded-full text-rose-200 border border-rose-300/70 hover:bg-rose-500/10 transition-colors bg-black/40"
-              >
-                Skip
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled
-              className="text-sm font-semibold text-emerald-200 flex items-center opacity-80"
-            >
-              <Check className="w-4 h-4 mr-1" />
-              Logged
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -278,13 +358,13 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
 
     const dateNum = d.getDate();
     if (!dots[dateNum]) dots[dateNum] = [];
-    const color = getMedColor(med.id);
-    if (!dots[dateNum].includes(color)) dots[dateNum].push(color);
+    const { bgClass } = getMedColors(med.name);
+    if (!dots[dateNum].includes(bgClass)) dots[dateNum].push(bgClass);
   });
 
   return (
     <div className="p-6 bg-black/70 rounded-2xl shadow-xl mt-8 border border-white/20 backdrop-blur-sm">
-      <h2 className="text-2xl font-bold mb-4 flex items-center">
+      <h2 className="text-2xl font-bold mb-4 flex items-center" style={whiteText}>
         <CalendarDays className="w-6 h-6 mr-2 text-[#FACC15]" />
 
         <span
@@ -298,12 +378,12 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
             year: 'numeric',
           })}
         </span>
-       </h2>
+      </h2>
 
-
+      {/* weekday labels – force white */}
       <div className="grid grid-cols-7 text-center text-sm font-semibold border-b border-white/10 pb-2 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <div key={day} className="w-full">
+          <div key={day} className="w-full" style={whiteText}>
             {day}
           </div>
         ))}
@@ -316,7 +396,6 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
           const base =
             'flex flex-col items-center justify-center p-1 h-10 transition-colors duration-150 rounded-lg';
 
-          // style for the number in the circle
           const dayStyle: React.CSSProperties = isToday
             ? { color: '#000000', WebkitTextFillColor: '#000000' } // today = black
             : { color: '#FFFFFF', WebkitTextFillColor: '#FFFFFF' }; // others = white
@@ -329,7 +408,7 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
                     className={`w-8 h-8 flex items-center justify-center rounded-full text-sm cursor-pointer ${
                       isToday
                         ? 'bg-[#FACC15] font-bold shadow-md'
-                        : 'hover:bg-white/10'
+                        : 'hover:bg.white/10'
                     }`}
                     style={dayStyle}
                   >
@@ -363,6 +442,11 @@ export default function DashboardPage() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doses, setDoses] = useState<DoseInstance[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+  // state for the medication info modal
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [selectedMedicationForInfo, setSelectedMedicationForInfo] =
+    useState<Medication | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -460,17 +544,16 @@ export default function DashboardPage() {
     setDoses(getDosesForUser(profile.id));
   };
 
-  // Page-level white text (default), overridable with inline styles
-  const pageTextStyle: React.CSSProperties = {
-    color: '#FFFFFF',
-    WebkitTextFillColor: '#FFFFFF',
+  const handleLearnMore = (medication: Medication) => {
+    console.log('[Dashboard] Learn more clicked for', medication.name);
+    setSelectedMedicationForInfo(medication);
+    setInfoModalOpen(true);
   };
 
   return (
     <main
       className="min-h-screen"
       style={{
-        ...pageTextStyle,
         backgroundImage:
           "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
         backgroundSize: 'cover',
@@ -484,7 +567,10 @@ export default function DashboardPage() {
           <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
             <div className="flex justify-between items-center mb-6">
               <div className="text-left">
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
+                <h1
+                  className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg"
+                  style={whiteText}
+                >
                   {getGreeting()}, {profile.name}
                 </h1>
               </div>
@@ -493,30 +579,38 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => router.push('/settings')}
-                className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
+                className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border.white shadow-lg"
               >
                 <User className="w-5 h-5" />
               </button>
             </div>
 
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold mb-2 text-center drop-shadow-lg">
-               Your medicines for{' '}
-               <span
-                 className="font-extrabold"
-                 style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
-               >
-                 today
-               </span>
+            <h2
+              className="text-2xl sm:text-3xl md:text-4xl font-semibold mb-2 text-center drop-shadow-lg"
+              style={whiteText}
+            >
+              Your medicines for{' '}
+              <span
+                className="font-extrabold"
+                style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
+              >
+                today
+              </span>
             </h2>
 
-            <p className="text-sm sm:text-base text-center text-slate-100/90 mb-2">
-              Tap a day above to see doses for that date.
-            </p>
-
+            {/* Week selector FIRST */}
             <WeekSelector
               selectedDay={selectedDay}
               setSelectedDay={setSelectedDay}
             />
+
+            {/* Instruction text BELOW the selector */}
+            <p
+              className="text-sm sm:text-base text-center text-slate-100/90 mt-3"
+              style={whiteText}
+            >
+              Tap a day above to see doses for that date.
+            </p>
           </div>
 
           {/* GROUPED DOSES */}
@@ -524,7 +618,10 @@ export default function DashboardPage() {
             {groupedKeys.length > 0 ? (
               groupedKeys.map((group) => (
                 <div key={group} className="space-y-4">
-                  <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
+                  <h3
+                    className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow"
+                    style={whiteText}
+                  >
                     {group} Doses
                   </h3>
                   <div className="space-y-3">
@@ -540,6 +637,7 @@ export default function DashboardPage() {
                           medication={med}
                           onMarkTaken={handleDoseTaken}
                           onSkip={handleDoseSkipped}
+                          onLearnMore={handleLearnMore}
                         />
                       );
                     })}
@@ -549,7 +647,9 @@ export default function DashboardPage() {
             ) : (
               <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
                 <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
-                <p className="text-lg sm:text-xl">No medications scheduled for this day.</p>
+                <p className="text-lg sm:text-xl" style={whiteText}>
+                  No medications scheduled for this day.
+                </p>
               </div>
             )}
           </div>
@@ -558,6 +658,13 @@ export default function DashboardPage() {
           <MonthlyCalendar doses={doses} medications={medications} />
         </div>
       </div>
+
+      {/* MEDICATION INFO MODAL – always mounted, visibility via `open` */}
+      <MedicationInfoModal
+        open={infoModalOpen}
+        onClose={() => setInfoModalOpen(false)}
+        medicationName={selectedMedicationForInfo?.name ?? ''}
+      />
     </main>
   );
 }
