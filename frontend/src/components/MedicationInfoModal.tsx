@@ -3,10 +3,6 @@ import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { X, ExternalLink, AlertTriangle, FileText } from 'lucide-react';
 import { fetchDrugInfo } from '@/lib/drugInfo';
-import {
-  getMedicationInfoCache,
-  setMedicationInfoCache
-} from '@/lib/storage';
 
 interface MedicationInfoModalProps {
   open: boolean;
@@ -54,17 +50,11 @@ export function MedicationInfoModal({
       return;
     }
 
-    // Check cache first
-    const cached = getMedicationInfoCache(medicationName);
-    if (cached && cached.data) {
-      setDrugInfo(cached.data);
-      setLoading(false);
-      return;
-    }
-
     // Fetch from API
     setLoading(true);
     setError(null);
+    setDrugInfo(null); // Reset previous data
+    
     fetchDrugInfo(medicationName)
       .then((data) => {
         if (!data.general_markdown) {
@@ -74,12 +64,6 @@ export function MedicationInfoModal({
           return;
         }
         setDrugInfo(data);
-        // Cache it
-        setMedicationInfoCache(medicationName, {
-          url: data.source_url,
-          data: data,
-          fetchedAt: new Date().toISOString()
-        });
       })
       .catch((err) => {
         setError(
@@ -165,8 +149,7 @@ export function MedicationInfoModal({
           {error && (
             <div className="rounded-2xl border border-coral/30 bg-coral/10 p-6">
               <p className="text-base font-light text-coral">
-                {error ||
-                  'Information not available. Please check the spelling or ask your pharmacist.'}
+                {error}
               </p>
             </div>
           )}
