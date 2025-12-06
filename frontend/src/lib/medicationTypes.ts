@@ -36,6 +36,7 @@ export type MedicationFrequency =
 
 export interface DoseInstance {
   id: string;
+  userId: string; // ADDED: Ensures DoseInstance is linked to a user
   medicationId: string;
   scheduledTime: string; // ISO string
   status: DoseStatus;
@@ -83,14 +84,4 @@ export const FREQUENCY_LABELS: Record<MedicationFrequency, string> = {
   every6h: 'Every 6 hours',
   every12h: 'Every 12 hours',
   as_needed: 'As needed (no reminders)',
-};
-
-export interface Medication {
-  id: string;
-  name: string;
-  dose: string;
-  // NEW:
-  purpose?: string; // e.g. "heart", "blood thinner", "pain relief"
-  // ...rest of your fields...
-  drugsUrl?: string; // keep this so Learn More keeps working
 };
