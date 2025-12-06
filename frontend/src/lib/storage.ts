@@ -1,4 +1,3 @@
-// frontend/src/lib/storage.ts
 import type {
   UserProfile,
   Medication,
@@ -12,8 +11,6 @@ export interface AdherenceStats {
   currentStreak: number;
   missedInLastWeek: number;
 }
-
-import type { MedicationInfoCacheEntry } from "./medicationTypes";
 
 interface AppState {
   profiles: UserProfile[];
