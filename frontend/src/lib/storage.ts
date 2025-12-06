@@ -98,7 +98,7 @@ export function deleteProfile(profileId: string) {
   // Remove all medications for this user
   state.medications = state.medications.filter((m) => m.userId !== profileId);
   // Remove all doses for this user
-  state.doses = state.doses.filter((d) => (d as any).userId !== profileId);
+  state.doses = state.doses.filter((d) => d.userId !== profileId); // Cleaned: Removed 'as any'
   // Remove all dose logs for this user
   state.doseLogs = state.doseLogs.filter((log) => log.userId !== profileId);
   saveState(state);
@@ -139,9 +139,7 @@ export function upsertMedications(userId: string, meds: Medication[]) {
 
 export function getDosesForUser(userId: string): DoseInstance[] {
   const state = loadState();
-  // FIX: Cast to 'any' to access userId, which is presumed to be on the runtime object 
-  // but missing from the imported 'DoseInstance' type definition.
-  return state.doses.filter((d) => (d as any).userId === userId);
+  return state.doses.filter((d) => d.userId === userId); // Cleaned: Removed 'as any'
 }
 
 /**
@@ -150,8 +148,7 @@ export function getDosesForUser(userId: string): DoseInstance[] {
 export function saveDosesForUser(userId: string, doses: DoseInstance[]) {
   const state = loadState();
   const normalized = doses.map((d) => ({ ...d, userId }));
-  // FIX: Cast to 'any' here as well.
-  state.doses = state.doses.filter((d) => (d as any).userId !== userId);
+  state.doses = state.doses.filter((d) => d.userId !== userId); // Cleaned: Removed 'as any'
   state.doses.push(...normalized);
   saveState(state);
 }
@@ -160,8 +157,7 @@ export function upsertDoses(userId: string, doses: DoseInstance[]) {
   const state = loadState();
   for (const dose of doses) {
     const withUser = { ...dose, userId };
-    // FIX: Cast to 'any' to access userId.
-    const idx = state.doses.findIndex((d) => d.id === dose.id && (d as any).userId === userId);
+    const idx = state.doses.findIndex((d) => d.id === dose.id && d.userId === userId); // Cleaned: Removed 'as any'
     if (idx >= 0) state.doses[idx] = withUser;
     else state.doses.push(withUser);
   }
@@ -176,8 +172,7 @@ export function updateDoseStatus(
 ) {
   const state = loadState();
   const idx = state.doses.findIndex(
-    // FIX: Cast to 'any' to access userId.
-    (d) => d.id === doseId && (d as any).userId === userId
+    (d) => d.id === doseId && d.userId === userId // Cleaned: Removed 'as any'
   );
   if (idx >= 0) {
     state.doses[idx] = {
