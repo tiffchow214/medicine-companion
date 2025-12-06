@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { X, ExternalLink, AlertTriangle, FileText } from 'lucide-react';
@@ -17,13 +16,21 @@ interface MedicationInfoModalProps {
 
 type TabType = 'general' | 'usage' | 'side-effects';
 
+// Response type from backend
+interface DrugInfo {
+  medication_name: string;
+  general_markdown: string;
+  usage_markdown: string;
+  side_effects_markdown: string;
+  source_url: string;
+}
+
 function buildDrugsComUrl(name: string): string {
   const slug = name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-');
-
   return `https://www.drugs.com/${slug}.html`;
 }
 
@@ -32,27 +39,25 @@ export function MedicationInfoModal({
   onClose,
   medicationName
 }: MedicationInfoModalProps) {
-  const [markdown, setMarkdown] = useState<string | null>(null);
+  const [drugInfo, setDrugInfo] = useState<DrugInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('general');
-
   const drugsUrl = buildDrugsComUrl(medicationName);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-
-    if (!drugsUrl) {
+    if (!medicationName) {
       setError('Medication name is missing or invalid.');
       return;
     }
 
     // Check cache first
-    const cached = getMedicationInfoCache(drugsUrl);
-    if (cached) {
-      setMarkdown(cached.markdown);
+    const cached = getMedicationInfoCache(medicationName);
+    if (cached && cached.data) {
+      setDrugInfo(cached.data);
       setLoading(false);
       return;
     }
@@ -62,17 +67,17 @@ export function MedicationInfoModal({
     setError(null);
     fetchDrugInfo(medicationName)
       .then((data) => {
-        if (!data.markdown) {
+        if (!data.general_markdown) {
           setError(
             'Information not available. Please check the spelling or ask your pharmacist.'
           );
           return;
         }
-        setMarkdown(data.markdown);
-        // Cache it using the URL as key
-        setMedicationInfoCache(data.source_url, {
+        setDrugInfo(data);
+        // Cache it
+        setMedicationInfoCache(medicationName, {
           url: data.source_url,
-          markdown: data.markdown,
+          data: data,
           fetchedAt: new Date().toISOString()
         });
       })
@@ -86,7 +91,7 @@ export function MedicationInfoModal({
       .finally(() => {
         setLoading(false);
       });
-  }, [open, drugsUrl, medicationName]);
+  }, [open, medicationName]);
 
   if (!open) return null;
 
@@ -119,7 +124,6 @@ export function MedicationInfoModal({
           >
             About {medicationName}
           </h2>
-
           {/* Disclaimer */}
           <div className="rounded-2xl border border-coral/30 bg-coral/10 p-4">
             <p className="text-base font-light text-coral flex items-start gap-2">
@@ -167,16 +171,24 @@ export function MedicationInfoModal({
             </div>
           )}
 
-          {markdown && !error && (
+          {drugInfo && !error && (
             <div className="prose prose-lg max-w-none prose-headings:font-light prose-headings:text-slate-900 prose-p:font-light prose-p:text-slate-700 prose-a:text-soft-teal prose-strong:font-normal">
-              <ReactMarkdown>{markdown}</ReactMarkdown>
+              {activeTab === 'general' && (
+                <ReactMarkdown>{drugInfo.general_markdown}</ReactMarkdown>
+              )}
+              {activeTab === 'usage' && (
+                <ReactMarkdown>{drugInfo.usage_markdown}</ReactMarkdown>
+              )}
+              {activeTab === 'side-effects' && (
+                <ReactMarkdown>{drugInfo.side_effects_markdown}</ReactMarkdown>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-white/40">
-          <a
+          
             href={drugsUrl}
             target="_blank"
             rel="noopener noreferrer"
