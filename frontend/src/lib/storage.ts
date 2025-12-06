@@ -98,7 +98,7 @@ export function deleteProfile(profileId: string) {
   // Remove all medications for this user
   state.medications = state.medications.filter((m) => m.userId !== profileId);
   // Remove all doses for this user
-  state.doses = state.doses.filter((d) => d.userId !== profileId); // Cleaned: Removed 'as any'
+  state.doses = state.doses.filter((d) => d.userId !== profileId);
   // Remove all dose logs for this user
   state.doseLogs = state.doseLogs.filter((log) => log.userId !== profileId);
   saveState(state);
@@ -139,7 +139,7 @@ export function upsertMedications(userId: string, meds: Medication[]) {
 
 export function getDosesForUser(userId: string): DoseInstance[] {
   const state = loadState();
-  return state.doses.filter((d) => d.userId === userId); // Cleaned: Removed 'as any'
+  return state.doses.filter((d) => d.userId === userId);
 }
 
 /**
@@ -148,7 +148,7 @@ export function getDosesForUser(userId: string): DoseInstance[] {
 export function saveDosesForUser(userId: string, doses: DoseInstance[]) {
   const state = loadState();
   const normalized = doses.map((d) => ({ ...d, userId }));
-  state.doses = state.doses.filter((d) => d.userId !== userId); // Cleaned: Removed 'as any'
+  state.doses = state.doses.filter((d) => d.userId !== userId);
   state.doses.push(...normalized);
   saveState(state);
 }
@@ -157,7 +157,7 @@ export function upsertDoses(userId: string, doses: DoseInstance[]) {
   const state = loadState();
   for (const dose of doses) {
     const withUser = { ...dose, userId };
-    const idx = state.doses.findIndex((d) => d.id === dose.id && d.userId === userId); // Cleaned: Removed 'as any'
+    const idx = state.doses.findIndex((d) => d.id === dose.id && d.userId === userId);
     if (idx >= 0) state.doses[idx] = withUser;
     else state.doses.push(withUser);
   }
@@ -172,7 +172,7 @@ export function updateDoseStatus(
 ) {
   const state = loadState();
   const idx = state.doses.findIndex(
-    (d) => d.id === doseId && d.userId === userId // Cleaned: Removed 'as any'
+    (d) => d.id === doseId && d.userId === userId
   );
   if (idx >= 0) {
     state.doses[idx] = {
@@ -220,14 +220,16 @@ export function calculateAdherenceStats(userId: string): AdherenceStats {
   // Calculate current streak (consecutive days with at least one taken dose)
   let currentStreak = 0;
   const now = new Date();
-  now.setHours(0, 0, 0, 0, 0);
+  // FIXED: setHours takes (hours, min, sec, ms) - removed extra argument
+  now.setHours(0, 0, 0, 0);
 
   // Group logs by date
   const logsByDate = new Map<string, { taken: number; missed: number; skipped: number }>();
   
   for (const log of logs) {
     const logDate = new Date(log.createdAt);
-    logDate.setHours(0, 0, 0, 0, 0);
+    // FIXED: setHours takes (hours, min, sec, ms) - removed extra argument
+    logDate.setHours(0, 0, 0, 0);
     const dateKey = logDate.toISOString().split('T')[0];
     
     if (!logsByDate.has(dateKey)) {
