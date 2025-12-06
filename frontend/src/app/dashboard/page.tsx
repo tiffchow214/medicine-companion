@@ -7,6 +7,9 @@ import { Clock, Check, X, CalendarDays, User, Pill } from 'lucide-react';
 
 // Modal for drug info
 import { MedicationInfoModal } from '@/components/MedicationInfoModal';
+// 🔔 reminder modal + scheduler hook
+import { ReminderModal } from '@/components/ReminderModal';
+import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 
 import {
   getActiveProfile,
@@ -91,7 +94,6 @@ function getMedColors(key: string) {
     textColor: MED_TEXT_COLORS[idx],
   };
 }
-
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -448,6 +450,16 @@ export default function DashboardPage() {
   const [selectedMedicationForInfo, setSelectedMedicationForInfo] =
     useState<Medication | null>(null);
 
+  // 🔔 reminder scheduler hook
+  const {
+    dueDose,
+    currentMedication,
+    clearDueDose,
+    markDoseTaken,
+    markDoseSkipped,
+    snoozeDose,
+  } = useReminderScheduler();
+
   useEffect(() => {
     setIsMounted(true);
     const active = getActiveProfile();
@@ -613,6 +625,17 @@ export default function DashboardPage() {
             </p>
           </div>
 
+          {/* 🔹 NEW: Add medication button */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => router.push('/add-medication')}
+              className="mt-2 mb-2 w-full sm:w-auto px-6 py-3 rounded-full bg-[#FACC15] text-black font-semibold shadow-md border border-amber-300 hover:bg-[#eab308] transition-colors"
+            >
+              + Add another medication
+            </button>
+          </div>
+
           {/* GROUPED DOSES */}
           <div className="space-y-6">
             {groupedKeys.length > 0 ? (
@@ -665,6 +688,29 @@ export default function DashboardPage() {
         onClose={() => setInfoModalOpen(false)}
         medicationName={selectedMedicationForInfo?.name ?? ''}
       />
+
+      {/* 🔔 REMINDER MODAL – opens when a dose becomes due */}
+      {dueDose && currentMedication && (
+        <ReminderModal
+          open={true}
+          onClose={clearDueDose}
+          dose={dueDose}
+          medication={currentMedication}
+          userName={profile.name}
+          onTaken={() => {
+            markDoseTaken();
+            setDoses(getDosesForUser(profile.id));
+          }}
+          onSkipped={(reason) => {
+            markDoseSkipped(reason);
+            setDoses(getDosesForUser(profile.id));
+          }}
+          onSnoozed={(minutes) => {
+            snoozeDose(minutes);
+            setDoses(getDosesForUser(profile.id));
+          }}
+        />
+      )}
     </main>
   );
 }

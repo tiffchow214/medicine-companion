@@ -7,8 +7,10 @@ from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
 from typing import Any
+from datetime import datetime
 import os
 import requests
+import random
 import httpx
 import urllib.parse
 import re  # NEW: for simple bullet formatting
@@ -118,50 +120,123 @@ def root():
 # ---------------------------------------------------------------------
 # OPENAI — Personalized Reminder Message
 # ---------------------------------------------------------------------
+
+ENCOURAGEMENT_SNIPPETS = [
+    "You're doing the right thing for your health.",
+    "This small step really helps your health.",
+    "You're taking good care of yourself.",
+    "Your future self will thank you for this.",
+    "Every dose helps keep you on track.",
+]
+
 @app.post("/api/personalized-reminder")
 def personalized_reminder(req: PersonalizedReminderRequest):
     """
     Generate a warm, personalized reminder sentence for this user/medication.
+
+    Shape we aim for:
+      1) "Hey Tiff, it's time to take your morning Aspirin for your pain relief."
+      2) An encouragement line that varies, and uses streak/missed info.
+
+    We always return 200 with a `message`, even if OpenAI fails.
     """
+
+    name = req.user_name.strip()
+    med = req.medication_name.strip()
+    purpose = (req.purpose or "").strip()
+    streak = req.adherence.current_streak
+    missed = req.adherence.missed_in_last_week
+
+    # --- Time of day for "morning Aspirin" style phrasing ---
+    hour = datetime.now().hour
+    if hour < 12:
+        tod_label = "morning"
+    elif hour < 18:
+        tod_label = "afternoon"
+    else:
+        tod_label = "evening"
+
+    # --- Pick a random encouragement phrase for variety ---
+    encouragement = random.choice(ENCOURAGEMENT_SNIPPETS)
+
+    # --- Build a clear, safe base sentence ourselves ---
+    # e.g. "Hey Tiff, it's time to take your morning Aspirin for your pain relief."
+    base = f"Hey {name}, it's time to take your {tod_label} {med}"
+    if purpose:
+        base += f" for your {purpose}"
+    base += "."
+
+    # --- Build a fallback second sentence using streak/missed ---
+    if streak >= 3:
+        fallback_second = (
+            f"{encouragement} You've kept up with it for {streak} days in a row."
+        )
+    elif missed > 0:
+        fallback_second = (
+            f"{encouragement} Don't worry about earlier missed doses, just take this one now."
+        )
+    else:
+        fallback_second = encouragement
+
+    fallback_full = f"{base} {fallback_second}"
+
     try:
+        # Ask OpenAI to write two short sentences in this shape
         completion = openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You create warm, encouraging medication reminders for "
-                        "elderly users.\n\n"
-                        "Guidelines:\n"
-                        "- Use their name\n"
-                        "- Reference why they take the medicine if you know it\n"
-                        "- Acknowledge their progress (streak)\n"
-                        "- If they missed doses, be gentle and supportive\n"
-                        "- Keep it very simple and clear\n"
-                        "- Maximum 2 short sentences."
+                        "You create warm, encouraging medication reminders for older adults.\n\n"
+                        "Requirements:\n"
+                        "- Reading level: 8–10 year old (very simple language).\n"
+                        "- You MUST write exactly two short sentences.\n"
+                        "- Sentence 1: clearly tell them it's time to take their medication, "
+                        "using the given time-of-day label (morning/afternoon/evening) and purpose if provided.\n"
+                        "- Sentence 2: start with the given encouragement phrase and then use streak/missed info.\n"
+                        "- Always include the verb 'take'.\n"
+                        "- Use the person's name exactly as given."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"User name: {req.user_name}\n"
-                        f"Medication: {req.medication_name}\n"
-                        f"Purpose: {req.purpose or 'unknown'}\n"
-                        f"Current streak (days in a row taken): {req.adherence.current_streak}\n"
-                        f"Missed doses in last week: {req.adherence.missed_in_last_week}"
+                        f"Name: {name}\n"
+                        f"Medication: {med}\n"
+                        f"Purpose: {purpose or 'unknown'}\n"
+                        f"Time-of-day label to use in sentence 1: {tod_label}\n"
+                        f"Current streak (days in a row taken): {streak}\n"
+                        f"Missed doses in last week: {missed}\n"
+                        f"Encouragement phrase to START sentence 2 with: \"{encouragement}\"\n"
+                        "Write exactly two sentences. "
+                        "Example style: 'Hey Tiff, it's time to take your morning Aspirin for your pain relief. "
+                        "You're doing the right thing for your health, and you've kept up 5 days in a row.'"
                     ),
                 },
             ],
+            temperature=0.6,
         )
 
-        message = completion.choices[0].message.content.strip()
+        message = (completion.choices[0].message.content or "").strip()
+
+        # If OpenAI gives us something empty or weird, fall back to our own string.
+        if not message:
+            message = fallback_full
+
+        # Safety check: make sure we actually say "take" + med name
+        lower = message.lower()
+        if "take" not in lower or med.lower() not in lower:
+            message = fallback_full
+
+        print("[/api/personalized-reminder] generated:", message)
         return {"message": message}
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error generating personalized reminder: {str(e)}",
-        )
+        print("Error in /api/personalized-reminder:", e)
+        # Still return a friendly, personalised message
+        return {"message": fallback_full}
+
 
 
 # ---------------------------------------------------------

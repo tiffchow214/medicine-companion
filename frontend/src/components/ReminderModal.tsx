@@ -29,34 +29,46 @@ export function ReminderModal({
 }: ReminderModalProps) {
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [showSnoozeOptions, setShowSnoozeOptions] = useState(false);
-  const [personalizedMessage, setPersonalizedMessage] = useState<string | null>(null);
+  const [personalizedMessage, setPersonalizedMessage] =
+    useState<string | null>(null);
 
+  // When the modal opens:
+  //  1) generate personalised text (OpenAI)
+  //  2) auto-play the reminder once (ElevenLabs)
   useEffect(() => {
-    if (open) {
-      // Generate personalized reminder message
-      generatePersonalizedReminder(medication)
-        .then((message) => {
-          setPersonalizedMessage(message);
-          // Play audio with personalized message
-          setAudioPlaying(true);
-          return playReminderAudio(userName, medication, message);
-        })
-        .then(() => {
-          setAudioPlaying(false);
-        })
-        .catch((err) => {
-          console.error('Reminder error:', err);
-          setAudioPlaying(false);
-          // Fallback: try to play generic audio
-          playReminderAudio(userName, medication).catch(() => {
-            // Ignore fallback errors
-          });
-        });
-    } else {
-      // Reset state when modal closes
+    if (!open) {
       setPersonalizedMessage(null);
       setAudioPlaying(false);
+      return;
     }
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        // 1) Get AI-generated personalised message
+        const message = await generatePersonalizedReminder(medication);
+        if (cancelled) return;
+        setPersonalizedMessage(message);
+
+        // 2) Auto-play audio once using the SAME message
+        setAudioPlaying(true);
+        await playReminderAudio(userName, medication, message);
+      } catch (err) {
+        console.error('Reminder error:', err);
+      } finally {
+        if (!cancelled) {
+          setAudioPlaying(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      setAudioPlaying(false);
+    };
   }, [open, userName, medication]);
 
   if (!open) return null;
@@ -70,6 +82,18 @@ export function ReminderModal({
   const handleSnooze = (minutes: number) => {
     onSnoozed(minutes);
     setShowSnoozeOptions(false);
+  };
+
+  const handleReplay = async () => {
+    if (!personalizedMessage) return;
+    try {
+      setAudioPlaying(true);
+      await playReminderAudio(userName, medication, personalizedMessage);
+    } catch (err) {
+      console.error('Replay reminder error:', err);
+    } finally {
+      setAudioPlaying(false);
+    }
   };
 
   return (
@@ -94,7 +118,7 @@ export function ReminderModal({
               <Bell className="h-10 w-10 text-soft-teal" strokeWidth={2} />
             </div>
           </div>
-          
+
           <h2
             id="reminder-title"
             className="mb-6 text-[32px] font-light text-slate-900 tracking-tight"
@@ -117,20 +141,29 @@ export function ReminderModal({
             </div>
             {medication.instructions && (
               <div className="text-lg font-light text-slate-600">
-                <span className="font-normal">Instructions:</span> {medication.instructions}
+                <span className="font-normal">Instructions:</span>{' '}
+                {medication.instructions}
               </div>
             )}
           </div>
 
           {personalizedMessage && (
             <div className="mb-6 rounded-2xl bg-soft-blue/10 border border-soft-teal/20 p-5 text-center">
-              <p className="text-lg font-light text-slate-700 leading-relaxed">
+              <p className="text-lg font-light text-slate-700 leading-relaxed mb-3">
                 {personalizedMessage}
               </p>
+              <button
+                type="button"
+                onClick={handleReplay}
+                disabled={audioPlaying}
+                className="inline-flex items-center justify-center rounded-full bg-soft-teal px-5 py-2 text-sm font-medium text-white shadow-soft transition hover:bg-soft-teal/90 disabled:opacity-60"
+              >
+                {audioPlaying ? 'Playing…' : 'Replay reminder'}
+              </button>
             </div>
           )}
 
-          {audioPlaying && (
+          {audioPlaying && !personalizedMessage && (
             <div className="mb-6 rounded-2xl bg-soft-teal/10 border border-soft-teal/20 p-4 text-base font-light text-soft-teal">
               🔊 Playing audio reminder...
             </div>
@@ -157,7 +190,7 @@ export function ReminderModal({
                 onClick={() => {
                   if (
                     confirm(
-                      'Are you sure you want to skip this dose? This will be recorded.'
+                      'Are you sure you want to skip this dose? This will be recorded.',
                     )
                   ) {
                     onSkipped('User tapped skip in the reminder modal.');

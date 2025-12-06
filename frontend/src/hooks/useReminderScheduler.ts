@@ -7,14 +7,15 @@ import {
   getDosesForUser,
   getMedicationsForUser,
   updateDoseStatus,
-  addDoseLog
+  addDoseLog,
 } from '@/lib/storage';
 import { sendCaregiverAlert } from '@/lib/caregiverClient';
+import { playReminderAudio } from '@/lib/audioClient'; // ⬅️ NEW
 
 export function useReminderScheduler() {
   const [dueDose, setDueDose] = useState<DoseInstance | null>(null);
   const [currentMedication, setCurrentMedication] = useState<Medication | null>(
-    null
+    null,
   );
 
   useEffect(() => {
@@ -79,7 +80,7 @@ export function useReminderScheduler() {
                 medication_name: med.name,
                 scheduled_time: dose.scheduledTime,
                 status: 'missed',
-                reason: 'Automatically detected missed dose.'
+                reason: 'Automatically detected missed dose.',
               }).catch((err) => {
                 console.error('Failed to send caregiver alert:', err);
               });
@@ -96,6 +97,19 @@ export function useReminderScheduler() {
     const interval = setInterval(checkDoses, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // 🔊 NEW EFFECT: when a dose becomes due, auto-play AI reminder audio
+  useEffect(() => {
+    if (!dueDose || !currentMedication) return;
+
+    const profile = getActiveProfile();
+    if (!profile) return;
+
+    // Fire and forget; errors are handled inside playReminderAudio
+    playReminderAudio(profile.name, currentMedication).catch((err) => {
+      console.error('Failed to auto-play reminder audio:', err);
+    });
+  }, [dueDose, currentMedication]);
 
   const clearDueDose = useCallback(() => {
     setDueDose(null);
@@ -136,7 +150,7 @@ export function useReminderScheduler() {
         medicationId: dueDose.medicationId,
         doseId: dueDose.id,
         status: 'skipped',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
 
       // Check if caregiver alert should be sent
@@ -152,7 +166,7 @@ export function useReminderScheduler() {
           medication_name: currentMedication.name,
           scheduled_time: dueDose.scheduledTime,
           status: 'skipped',
-          reason: reason || 'User tapped skip in the reminder modal.'
+          reason: reason || 'User tapped skip in the reminder modal.',
         }).catch((err) => {
           console.error('Failed to send caregiver alert:', err);
         });
@@ -160,7 +174,7 @@ export function useReminderScheduler() {
 
       clearDueDose();
     },
-    [dueDose, currentMedication, clearDueDose]
+    [dueDose, currentMedication, clearDueDose],
   );
 
   const snoozeDose = useCallback(
@@ -171,14 +185,18 @@ export function useReminderScheduler() {
       if (!profile) return;
 
       const snoozedUntil = new Date(
-        Date.now() + minutes * 60 * 1000
+        Date.now() + minutes * 60 * 1000,
       ).toISOString();
-      const updatedDose = { ...dueDose, snoozedUntil, status: 'upcoming' as const };
+      const updatedDose = {
+        ...dueDose,
+        snoozedUntil,
+        status: 'upcoming' as const,
+      };
       updateDoseStatus(profile.id, dueDose.id, 'upcoming');
 
       clearDueDose();
     },
-    [dueDose, clearDueDose]
+    [dueDose, clearDueDose],
   );
 
   return {
@@ -190,4 +208,3 @@ export function useReminderScheduler() {
     snoozeDose,
   };
 }
-
