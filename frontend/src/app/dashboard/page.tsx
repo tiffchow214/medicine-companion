@@ -236,7 +236,7 @@ function DoseCard({
               <h3
                 className="text-xl font-bold leading-tight inline-flex px-0 py-0"
                 style={{
-                  color: medTextColor,          // coloured text (not black/white)
+                  color: medTextColor, // coloured text (not black/white)
                   WebkitTextFillColor: medTextColor,
                 }}
               >
@@ -276,19 +276,20 @@ function DoseCard({
           <div className="flex flex-wrap gap-2 text-sm font-semibold justify-end">
             {isActionable ? (
               <>
-                {/* ✅ leave these exactly as they are now, only colours enforced */}
+                {/* Mark Taken */}
                 <button
                   type="button"
                   onClick={() => onMarkTaken(dose)}
                   className="px-4 py-2 rounded-full hover:brightness-105 transition-colors"
                   style={{
                     backgroundColor: '#22c55e', // green
-                    color: '#111827',           // black-ish text
+                    color: '#111827', // black-ish text
                     WebkitTextFillColor: '#111827',
                   }}
                 >
                   Mark Taken
                 </button>
+                {/* Skip */}
                 <button
                   type="button"
                   onClick={() => onSkip(dose)}
@@ -397,7 +398,7 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
                     className={`w-8 h-8 flex items-center justify-center rounded-full text-sm cursor-pointer ${
                       isToday
                         ? 'bg-[#FACC15] font-bold shadow-md'
-                        : 'hover:bg:white/10'
+                        : 'hover:bg-white/10'
                     }`}
                     style={dayStyle}
                   >
@@ -440,7 +441,7 @@ export default function DashboardPage() {
   );
   const [infoLoadingMedId, setInfoLoadingMedId] = useState<string | null>(null);
 
-  // ✅ DEBUG LOGGING - ADD THIS
+  // DEBUG logging
   useEffect(() => {
     console.log('🔍 DEBUG: API_BASE =', API_BASE);
     console.log('🔍 DEBUG: Medications loaded =', medications.length);
@@ -540,21 +541,20 @@ export default function DashboardPage() {
     setDoses(getDosesForUser(profile.id));
   };
 
-  // ✅ DEBUG LOGGING ADDED HERE
   const handleLearnMore = async (med: Medication) => {
     console.log('🎯 CLICKED Learn More for:', med.name);
     console.log('🔍 API_BASE value:', API_BASE);
     console.log('🔍 Full URL:', `${API_BASE}/api/drug-info`);
-    
+
     if (!API_BASE) {
       console.error('❌ API_BASE is undefined!');
       alert('Backend URL is not configured.');
       return;
     }
-  
+
     try {
       setInfoLoadingMedId(med.id);
-  
+
       console.log('📡 Fetching drug info...');
       const res = await fetch(`${API_BASE}/api/drug-info`, {
         method: 'POST',
@@ -563,16 +563,16 @@ export default function DashboardPage() {
           medication_name: med.name,
         }),
       });
-  
+
       console.log('📡 Response status:', res.status);
       console.log('📡 Response ok:', res.ok);
-  
+
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         console.error('❌ Drug info error:', res.status, text);
         throw new Error('Failed to fetch medication information.');
       }
-  
+
       const data: DrugInfo = await res.json();
       console.log('✅ Got data:', data);
       setSelectedDrugInfo(data);
@@ -587,7 +587,7 @@ export default function DashboardPage() {
       setInfoLoadingMedId(null);
     }
   };
-  
+
   const pageTextStyle: React.CSSProperties = {
     color: '#FFFFFF',
     WebkitTextFillColor: '#FFFFFF',
@@ -734,7 +734,7 @@ export default function DashboardPage() {
                 to your doctor or pharmacist about your medicines.
               </p>
 
-              
+              <a
                 href={selectedDrugInfo.source_url}
                 target="_blank"
                 rel="noreferrer"
