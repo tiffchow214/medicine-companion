@@ -101,8 +101,7 @@ export default function WelcomePage() {
                 className="text-xl sm:text-2xl font-medium max-w-xl mx-auto leading-relaxed"
                 style={whiteTextStyle}
               >
-                A simple, clear, and reliable way to manage medications for
-                yourself or a loved one.
+                Receive personalised medication reminders and stay on top of your health!
               </p>
             </div>
 
