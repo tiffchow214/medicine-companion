@@ -85,12 +85,6 @@ export default function WelcomePage() {
           >
             Medicine Companion
           </h1>
-          <p
-            className="text-2xl sm:text-3xl mt-4 font-semibold"
-            style={whiteTextStyle}
-          >
-            Never Miss a Single Dose!
-          </p>
         </header>
 
         {/* STEP 1: INTRO/WELCOME */}
