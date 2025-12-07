@@ -8,6 +8,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import requests
+import httpx
 
 # ---------------------------------------------------------
 # Load environment variables
@@ -54,7 +55,7 @@ app.add_middleware(
 # Pydantic models
 # ---------------------------------------------------------
 class DrugInfoRequest(BaseModel):
-    url: str  # e.g. "https://www.drugs.com/aspirin.html"
+    medication_name: str  # e.g. "Aspirin"
 
 
 class ReminderAudioRequest(BaseModel):
@@ -120,7 +121,7 @@ def personalized_reminder(req: PersonalizedReminderRequest):
     """
     try:
         completion = openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -160,45 +161,134 @@ def personalized_reminder(req: PersonalizedReminderRequest):
 
 
 # ---------------------------------------------------------
-# Firecrawl: drug information from drugs.com
+# OpenFDA + GPT: Drug information
 # ---------------------------------------------------------
 @app.post("/api/drug-info")
-def get_drug_info(body: DrugInfoRequest):
+async def get_drug_info(body: DrugInfoRequest):
     """
-    Given a drugs.com URL, fetch a cleaned markdown summary via Firecrawl.
-
-    Example body:
+    Fetch drug information from OpenFDA API and use GPT to create a simplified summary.
+    
+    Example request:
     {
-        "url": "https://www.drugs.com/aspirin.html"
+        "medication_name": "Aspirin"
+    }
+    
+    Returns:
+    {
+        "medication_name": "Aspirin",
+        "general_markdown": "...",
+        "usage_markdown": "...",
+        "side_effects_markdown": "...",
+        "source_url": "https://api.fda.gov/..."
     }
     """
     try:
-        doc = firecrawl_client.scrape(
-            body.url,
-            formats=["markdown"],
-        )
-
-        # Firecrawl client may return an object with .markdown
-        # or a dict with 'markdown'
-        markdown = getattr(doc, "markdown", None)
-        if markdown is None and isinstance(doc, dict):
-            markdown = doc.get("markdown")
-
-        if not markdown:
+        med_name = body.medication_name.strip()
+        
+        # 1. Query OpenFDA for drug label
+        openfda_url = "https://api.fda.gov/drug/label.json"
+        params = {
+            "search": f'openfda.brand_name:"{med_name}" OR openfda.generic_name:"{med_name}"',
+            "limit": 1
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            fda_response = await client.get(openfda_url, params=params)
+        
+        if fda_response.status_code != 200:
             raise HTTPException(
                 status_code=500,
-                detail="No markdown returned from Firecrawl",
+                detail=f"OpenFDA API error: {fda_response.status_code}"
             )
+        
+        fda_data = fda_response.json()
+        
+        if not fda_data.get("results"):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No FDA data found for medication: {med_name}"
+            )
+        
+        result = fda_data["results"][0]
+        
+        # Extract relevant sections from FDA label
+        purpose = " ".join(result.get("purpose", []))
+        warnings = " ".join(result.get("warnings", []))
+        indications = " ".join(result.get("indications_and_usage", []))
+        dosage = " ".join(result.get("dosage_and_administration", []))
+        adverse_reactions = " ".join(result.get("adverse_reactions", []))
+        
+        # 2. Use GPT to simplify the FDA data into elderly-friendly language
+        system_prompt = """You are a helpful assistant that explains medication information in simple, clear language for elderly users.
 
+Your task:
+1. Read the FDA drug label information provided
+2. Create three SHORT summaries (max 3-4 sentences each):
+   - General info (what it's for, key warnings)
+   - How to use it (dosage, when to take)
+   - Possible side effects (most common ones)
+
+Guidelines:
+- Use simple words (avoid medical jargon)
+- Be clear and direct
+- Focus on what matters most to patients
+- Keep each section SHORT (3-4 sentences max)
+- If info is missing or unclear, say "Consult your doctor or pharmacist"
+"""
+
+        user_prompt = f"""Medication: {med_name}
+
+FDA Label Information:
+
+Purpose: {purpose[:500] if purpose else "Not specified"}
+
+Indications: {indications[:500] if indications else "Not specified"}
+
+Warnings: {warnings[:500] if warnings else "Not specified"}
+
+Dosage: {dosage[:500] if dosage else "Not specified"}
+
+Adverse Reactions: {adverse_reactions[:500] if adverse_reactions else "Not specified"}
+
+Please create three SHORT summaries in plain language for an elderly patient."""
+
+        completion = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+        )
+        
+        ai_summary = completion.choices[0].message.content.strip()
+        
+        # Simple parsing - split by sections
+        # GPT usually structures the response well
+        sections = ai_summary.split("\n\n")
+        
+        general_markdown = sections[0] if len(sections) > 0 else ai_summary
+        usage_markdown = sections[1] if len(sections) > 1 else "Consult your doctor or pharmacist for dosage information."
+        side_effects_markdown = sections[2] if len(sections) > 2 else "Consult your doctor or pharmacist about possible side effects."
+        
+        # Build source URL
+        source_url = f"https://api.fda.gov/drug/label.json?search=openfda.brand_name:\"{med_name}\""
+        
         return {
-            "source_url": body.url,
-            "markdown": markdown,
+            "medication_name": med_name,
+            "general_markdown": general_markdown,
+            "usage_markdown": usage_markdown,
+            "side_effects_markdown": side_effects_markdown,
+            "source_url": source_url,
         }
-
+        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Firecrawl error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching drug info: {str(e)}"
+        )
 
 
 # ---------------------------------------------------------
