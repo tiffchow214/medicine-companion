@@ -32,7 +32,6 @@ if not ELEVENLABS_API_KEY:
 if not RESEND_API_KEY:
     print("⚠️ RESEND_API_KEY is not set. /api/caregiver-alert will fail until you set it.")
 
-
 # ---------------------------------------------------------
 # Clients
 # ---------------------------------------------------------

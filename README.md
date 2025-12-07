@@ -198,7 +198,7 @@ When it's time for medication:
 - Limited to web browsers (no native mobile app yet)
 - Voice reminders require browser audio permissions
 
-## 🛣️ Desirable Features to be added
+## 🛣️ Desirable Features
 
 - [ ] Database integration for persistent storage 
 - [ ] Push notifications (work even when browser closed)
