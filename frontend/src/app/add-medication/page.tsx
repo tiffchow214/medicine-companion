@@ -334,7 +334,7 @@ export default function AddMedicationPage() {
               <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8 h-full flex flex-col min-h-[460px]">
                 <div>
                   <h2 className="mb-6 text-2xl font-light text-slate-900">
-                    Medication Details
+                    1. Medication Details
                   </h2>
                 </div>
 
@@ -412,29 +412,14 @@ export default function AddMedicationPage() {
                     />
                   </div>
                 </div>
-                {/* Save & Add another – directly under Medication Details */}
-                <div className="pt-4">
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => saveMedication({ addAnother: true })}
-                    className="w-full rounded-full px-6 py-3 text-base font-medium shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gray-400"
-                    style={{
-                      backgroundColor: '#e5e7eb', // grey
-                      color: '#111827', // black-ish
-                    }}
-                  >
-                    {saving ? 'Saving…' : 'Save & Add another medication'}
-                  </button>
-                </div>
               </div>
 
               {/* Schedule Card */}
               <div className="glass-card rounded-3xl p-8 md:p-10 space-y-8 h-full flex flex-col min-h-[460px]">
                 <div>
                   <h2 className="mb-6 text-2xl font-light text-slate-900 flex items-center gap-4">
+                    2. Schedule
                     <Clock className="h-6 w-6 text-soft-teal" strokeWidth={2} />
-                    Schedule
                   </h2>
                 </div>
 
@@ -524,6 +509,22 @@ export default function AddMedicationPage() {
                       }
                     />
                   </div>
+                </div>
+
+                {/* Save & Add another – now under the Schedule card */}
+                <div className="pt-4">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => saveMedication({ addAnother: true })}
+                    className="w-full rounded-full px-6 py-3 text-base font-medium shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gray-400"
+                    style={{
+                      backgroundColor: '#e5e7eb', // grey
+                      color: '#111827', // black-ish
+                    }}
+                  >
+                    {saving ? 'Saving…' : 'Save & Add another medication'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -634,29 +635,28 @@ export default function AddMedicationPage() {
             </div>
 
             {/* Submit Buttons */}
-                      {/* Submit Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 sm:justify-end pt-4">
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard')}
-              className="glass-card rounded-full px-8 py-4 text-base font-light text-slate-700 transition hover:bg-white/80"
-            >
-              Cancel
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4 sm:justify-end pt-4">
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard')}
+                className="glass-card rounded-full px-8 py-4 text-base font-light text-slate-700 transition hover:bg-white/80"
+              >
+                Cancel
+              </button>
 
-            {/* ALWAYS goes to dashboard, no validation/saving required */}
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard')}
-              className="rounded-full px-8 py-4 text-base font-medium shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-yellow-400"
-              style={{
-                backgroundColor: '#FACC15',
-                color: '#111827',
-              }}
-            >
-              Go to Dashboard
-            </button>
-          </div>
+              {/* ALWAYS goes to dashboard, no validation/saving required */}
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard')}
+                className="rounded-full px-8 py-4 text-base font-medium shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-yellow-400"
+                style={{
+                  backgroundColor: '#FACC15',
+                  color: '#111827',
+                }}
+              >
+                Go to Dashboard
+              </button>
+            </div>
           </form>
         </main>
       </div>
