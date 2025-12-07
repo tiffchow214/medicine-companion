@@ -551,10 +551,10 @@ export default function DashboardPage() {
       alert('Backend URL is not configured.');
       return;
     }
-
+  
     try {
       setInfoLoadingMedId(med.id);
-
+  
       console.log('📡 Fetching drug info...');
       const res = await fetch(`${API_BASE}/api/drug-info`, {
         method: 'POST',
@@ -563,16 +563,16 @@ export default function DashboardPage() {
           medication_name: med.name,
         }),
       });
-
+  
       console.log('📡 Response status:', res.status);
       console.log('📡 Response ok:', res.ok);
-
+  
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         console.error('❌ Drug info error:', res.status, text);
         throw new Error('Failed to fetch medication information.');
       }
-
+  
       const data: DrugInfo = await res.json();
       console.log('✅ Got data:', data);
       setSelectedDrugInfo(data);
@@ -587,7 +587,7 @@ export default function DashboardPage() {
       setInfoLoadingMedId(null);
     }
   };
-
+  
   const pageTextStyle: React.CSSProperties = {
     color: '#FFFFFF',
     WebkitTextFillColor: '#FFFFFF',
