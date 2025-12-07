@@ -464,6 +464,11 @@ export default function DashboardPage() {
     return null;
   }
 
+  // ✅ DEBUG: check if modal should render
+  if (selectedDrugInfo) {
+    console.log('🟢 Modal should now be on screen:', selectedDrugInfo);
+  }
+
   const dayDoses: DoseInstance[] = (() => {
     const start = new Date(selectedDay);
     start.setHours(0, 0, 0, 0);
