@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import OpenAI
-from firecrawl import Firecrawl
 from dotenv import load_dotenv
 import os
 import requests
@@ -16,7 +15,6 @@ import requests
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_FROM_EMAIL = os.getenv(
@@ -26,9 +24,6 @@ RESEND_FROM_EMAIL = os.getenv(
 
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set. Add it to your .env file or shell env.")
-
-if not FIRECRAWL_API_KEY:
-    raise RuntimeError("FIRECRAWL_API_KEY is not set. Add it to your .env file or shell env.")
 
 if not ELEVENLABS_API_KEY:
     print("⚠️ ELEVENLABS_API_KEY is not set. /api/reminder-audio will fail until you set it.")
@@ -41,7 +36,6 @@ if not RESEND_API_KEY:
 # Clients
 # ---------------------------------------------------------
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
-firecrawl_client = Firecrawl(api_key=FIRECRAWL_API_KEY)
 
 # ---------------------------------------------------------
 # FastAPI app + CORS
