@@ -2,7 +2,7 @@
 
 A web application designed to help elderly users and their caretakers manage medication schedules, get reminders, and access reliable medication information.
 
-![Medicine Companion Vercel link] 
+Vercel link:
 https://medicine-companion.vercel.app/welcome 
 
 
@@ -198,15 +198,15 @@ When it's time for medication:
 - Limited to web browsers (no native mobile app yet)
 - Voice reminders require browser audio permissions
 
-## 🛣️ Roadmap
+## 🛣️ Desirable Features to be added
 
-- [ ] Database integration for persistent storage
+- [ ] Database integration for persistent storage 
 - [ ] Push notifications (work even when browser closed)
-- [ ] Mobile app (iOS/Android)
 - [ ] Multiple languages support
 - [ ] Integration with pharmacy APIs
 - [ ] Refill reminders
 - [ ] Medication interaction checker
+- [ ] Doctors appointment booking
 
 ## 🤝 Contributing
 
