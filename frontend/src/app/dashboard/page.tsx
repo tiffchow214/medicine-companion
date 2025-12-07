@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Clock, Check, X, CalendarDays, User, Pill } from 'lucide-react';
 import { API_BASE } from '@/lib/apiBase';
@@ -398,7 +399,7 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
                     className={`w-8 h-8 flex items-center justify-center rounded-full text-sm cursor-pointer ${
                       isToday
                         ? 'bg-[#FACC15] font-bold shadow-md'
-                        : 'hover:bg-white/10'
+                        : 'hover:bg:white/10'
                     }`}
                     style={dayStyle}
                   >
@@ -464,7 +465,7 @@ export default function DashboardPage() {
     return null;
   }
 
-  // ✅ DEBUG: check if modal should render
+  // DEBUG: check if modal should render
   if (selectedDrugInfo) {
     console.log('🟢 Modal should now be on screen:', selectedDrugInfo);
   }
@@ -600,7 +601,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* MAIN PAGE */}
       <main
         className="min-h-screen"
         style={{
@@ -692,69 +692,72 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* MODAL OUTSIDE <main> WITH VERY HIGH Z-INDEX */}
-      {selectedDrugInfo && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 px-4">
-          <div className="max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 text-white border border-white/20 p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-2xl font-bold mb-1">
-                  {selectedDrugInfo.medication_name}
-                </h3>
-                <p className="text-xs text-slate-300">
-                  Information from FDA drug label (simplified).
-                </p>
+      {/* Modal rendered via portal directly into <body> */}
+      {isMounted &&
+        selectedDrugInfo &&
+        createPortal(
+          <div className="fixed inset-0 flex items-center justify-center bg-white/60 px-4 z-[9999]">
+            <div className="max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 text-white border border-white/20 p-6 shadow-2xl">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-2xl font-bold mb-1">
+                    {selectedDrugInfo.medication_name}
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Information from FDA drug label (simplified).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDrugInfo(null)}
+                  className="rounded-full bg-white/10 hover:bg-white/20 px-3 py-1 text-sm"
+                >
+                  Close
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDrugInfo(null)}
-                className="rounded-full bg-white/10 hover:bg-white/20 px-3 py-1 text-sm"
-              >
-                Close
-              </button>
+
+              <div className="space-y-5 text-sm leading-relaxed">
+                <section>
+                  <h4 className="font-semibold mb-1">
+                    What this medicine is for & warnings
+                  </h4>
+                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                    {selectedDrugInfo.general_markdown}
+                  </pre>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold mb-1">How to use</h4>
+                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                    {selectedDrugInfo.usage_markdown}
+                  </pre>
+                </section>
+
+                <section>
+                  <h4 className="font-semibold mb-1">Possible side effects</h4>
+                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                    {selectedDrugInfo.side_effects_markdown}
+                  </pre>
+                </section>
+
+                <p className="text-[11px] text-slate-400">
+                  This is a simplified summary and not medical advice. Always
+                  talk to your doctor or pharmacist about your medicines.
+                </p>
+
+                <a
+                  href={selectedDrugInfo.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center text-xs underline text-[#FACC15]"
+                >
+                  View full FDA label (OpenFDA)
+                </a>
+              </div>
             </div>
-
-            <div className="space-y-5 text-sm leading-relaxed">
-              <section>
-                <h4 className="font-semibold mb-1">
-                  What this medicine is for & warnings
-                </h4>
-                <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
-                  {selectedDrugInfo.general_markdown}
-                </pre>
-              </section>
-
-              <section>
-                <h4 className="font-semibold mb-1">How to use</h4>
-                <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
-                  {selectedDrugInfo.usage_markdown}
-                </pre>
-              </section>
-
-              <section>
-                <h4 className="font-semibold mb-1">Possible side effects</h4>
-                <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
-                  {selectedDrugInfo.side_effects_markdown}
-                </pre>
-              </section>
-
-              <p className="text-[11px] text-slate-400">
-                This is a simplified summary and not medical advice. Always talk
-                to your doctor or pharmacist about your medicines.
-              </p>
-
-              <a
-                href={selectedDrugInfo.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center text-xs underline text-[#FACC15]"
-              >
-                View full FDA label (OpenFDA)
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
