@@ -440,6 +440,12 @@ export default function DashboardPage() {
   );
   const [infoLoadingMedId, setInfoLoadingMedId] = useState<string | null>(null);
 
+  // ✅ DEBUG LOGGING - ADD THIS
+  useEffect(() => {
+    console.log('🔍 DEBUG: API_BASE =', API_BASE);
+    console.log('🔍 DEBUG: Medications loaded =', medications.length);
+  }, [medications]);
+
   useEffect(() => {
     setIsMounted(true);
     const active = getActiveProfile();
@@ -534,8 +540,14 @@ export default function DashboardPage() {
     setDoses(getDosesForUser(profile.id));
   };
 
+  // ✅ DEBUG LOGGING ADDED HERE
   const handleLearnMore = async (med: Medication) => {
+    console.log('🎯 CLICKED Learn More for:', med.name);
+    console.log('🔍 API_BASE value:', API_BASE);
+    console.log('🔍 Full URL:', `${API_BASE}/api/drug-info`);
+    
     if (!API_BASE) {
+      console.error('❌ API_BASE is undefined!');
       alert('Backend URL is not configured.');
       return;
     }
@@ -543,25 +555,29 @@ export default function DashboardPage() {
     try {
       setInfoLoadingMedId(med.id);
 
+      console.log('📡 Fetching drug info...');
       const res = await fetch(`${API_BASE}/api/drug-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           medication_name: med.name,
-          url: '', // harmless for new backend, required by old local one
         }),
       });
 
+      console.log('📡 Response status:', res.status);
+      console.log('📡 Response ok:', res.ok);
+
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        console.error('Drug info error:', res.status, text);
+        console.error('❌ Drug info error:', res.status, text);
         throw new Error('Failed to fetch medication information.');
       }
 
       const data: DrugInfo = await res.json();
+      console.log('✅ Got data:', data);
       setSelectedDrugInfo(data);
     } catch (err) {
-      console.error(err);
+      console.error('❌ Error in handleLearnMore:', err);
       alert(
         err instanceof Error
           ? err.message
@@ -718,7 +734,7 @@ export default function DashboardPage() {
                 to your doctor or pharmacist about your medicines.
               </p>
 
-              <a
+              
                 href={selectedDrugInfo.source_url}
                 target="_blank"
                 rel="noreferrer"
