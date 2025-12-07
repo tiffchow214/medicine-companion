@@ -44,7 +44,7 @@
     background-repeat: no-repeat;
     opacity: 0.08;
     filter: blur(40px);
-    z-index: 0;
+    z-index: -1;              /* ⬅️ changed from 0 to -1 */
     pointer-events: none;
   }
 
@@ -59,7 +59,7 @@
       rgba(255, 255, 255, 0.98) 100%
     );
     backdrop-filter: blur(1px);
-    z-index: 0;
+    z-index: -1;              /* ⬅️ changed from 0 to -1 */
     pointer-events: none;
   }
 
