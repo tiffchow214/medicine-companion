@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Clock, Check, X, CalendarDays, User, Pill } from 'lucide-react';
 import { API_BASE } from '@/lib/apiBase';
@@ -399,7 +398,7 @@ function MonthlyCalendar({ doses, medications }: MonthlyCalendarProps) {
                     className={`w-8 h-8 flex items-center justify-center rounded-full text-sm cursor-pointer ${
                       isToday
                         ? 'bg-[#FACC15] font-bold shadow-md'
-                        : 'hover:bg:white/10'
+                        : 'hover:bg-white/10'
                     }`}
                     style={dayStyle}
                   >
@@ -465,9 +464,9 @@ export default function DashboardPage() {
     return null;
   }
 
-  // DEBUG: check if modal should render
+  // DEBUG: check if info is set
   if (selectedDrugInfo) {
-    console.log('🟢 Modal should now be on screen:', selectedDrugInfo);
+    console.log('🟢 Drug info loaded for panel:', selectedDrugInfo);
   }
 
   const dayDoses: DoseInstance[] = (() => {
@@ -600,147 +599,99 @@ export default function DashboardPage() {
   };
 
   return (
-    <>
-      <main
-        className="min-h-screen"
-        style={{
-          ...pageTextStyle,
-          backgroundImage:
-            "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundAttachment: 'fixed',
-        }}
-      >
-        <div className="min-h-screen flex items-start justify-center p-4 sm:p-6 md:p-8">
-          <div className="w-full max-w-5xl space-y-8">
-            {/* HEADER CARD */}
-            <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
-              <div className="flex justify-between items-center mb-6">
-                <div className="text-left">
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
-                    {getGreeting()}, {profile.name}
-                  </h1>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => router.push('/settings')}
-                  className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
-                >
-                  <User className="w-5 h-5" />
-                </button>
+    <main
+      className="min-h-screen"
+      style={{
+        ...pageTextStyle,
+        backgroundImage:
+          "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+      }}
+    >
+      <div className="min-h-screen flex items-start justify-center p-4 sm:p-6 md:p-8">
+        <div className="w-full max-w-5xl space-y-8">
+          {/* HEADER CARD */}
+          <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
+            <div className="flex justify-between items-center mb-6">
+              <div className="text-left">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
+                  {getGreeting()}, {profile.name}
+                </h1>
               </div>
 
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-center drop-shadow-lg">
-                Your medicines for{' '}
-                <span
-                  className="font-extrabold"
-                  style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
-                >
-                  today
-                </span>
-              </h2>
-
-              <WeekSelector
-                selectedDay={selectedDay}
-                setSelectedDay={setSelectedDay}
-              />
+              <button
+                type="button"
+                onClick={() => router.push('/settings')}
+                className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
+              >
+                <User className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* GROUPED DOSES */}
-            <div className="space-y-6">
-              {groupedKeys.length > 0 ? (
-                groupedKeys.map((group) => (
-                  <div key={group} className="space-y-4">
-                    <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
-                      {group} Doses
-                    </h3>
-                    <div className="space-y-3">
-                      {grouped[group].map((dose) => {
-                        const med = medications.find(
-                          (m) => m.id === dose.medicationId,
-                        );
-                        if (!med) return null;
-                        return (
-                          <DoseCard
-                            key={dose.id}
-                            dose={dose}
-                            medication={med}
-                            onMarkTaken={handleDoseTaken}
-                            onSkip={handleDoseSkipped}
-                            onLearnMore={handleLearnMore}
-                            learnMoreLoading={infoLoadingMedId === med.id}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
-                  <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
-                  <p className="text-lg sm:text-xl">
-                    No medications scheduled for this day.
-                  </p>
-                </div>
-              )}
-            </div>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-center drop-shadow-lg">
+              Your medicines for{' '}
+              <span
+                className="font-extrabold"
+                style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
+              >
+                today
+              </span>
+            </h2>
 
-            <MonthlyCalendar doses={doses} medications={medications} />
+            <WeekSelector
+              selectedDay={selectedDay}
+              setSelectedDay={setSelectedDay}
+            />
           </div>
-        </div>
-      </main>
 
-      {/* Modal rendered via portal directly into <body> */}
-      {isMounted &&
-        selectedDrugInfo &&
-        createPortal(
-          <div className="fixed inset-0 flex items-center justify-center bg-white/60 px-4 z-[9999]">
-            <div className="max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 text-white border border-white/20 p-6 shadow-2xl">
-              <div className="flex items-start justify-between mb-4">
+          {/* INLINE DRUG INFO PANEL */}
+          {selectedDrugInfo && (
+            <div className="backdrop-blur-sm bg-white/95 text-slate-900 rounded-2xl shadow-2xl px-6 py-4 border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-2xl font-bold mb-1">
+                  <h3 className="text-xl font-bold mb-1">
                     {selectedDrugInfo.medication_name}
                   </h3>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-slate-500">
                     Information from FDA drug label (simplified).
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedDrugInfo(null)}
-                  className="rounded-full bg-white/10 hover:bg-white/20 px-3 py-1 text-sm"
+                  className="rounded-full bg-slate-100 hover:bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="space-y-5 text-sm leading-relaxed">
+              <div className="space-y-3 text-sm leading-relaxed">
                 <section>
                   <h4 className="font-semibold mb-1">
                     What this medicine is for & warnings
                   </h4>
-                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                  <pre className="whitespace-pre-wrap text-xs bg-slate-100 rounded-lg p-3">
                     {selectedDrugInfo.general_markdown}
                   </pre>
                 </section>
 
                 <section>
                   <h4 className="font-semibold mb-1">How to use</h4>
-                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                  <pre className="whitespace-pre-wrap text-xs bg-slate-100 rounded-lg p-3">
                     {selectedDrugInfo.usage_markdown}
                   </pre>
                 </section>
 
                 <section>
                   <h4 className="font-semibold mb-1">Possible side effects</h4>
-                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-lg p-3">
+                  <pre className="whitespace-pre-wrap text-xs bg-slate-100 rounded-lg p-3">
                     {selectedDrugInfo.side_effects_markdown}
                   </pre>
                 </section>
 
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-500">
                   This is a simplified summary and not medical advice. Always
                   talk to your doctor or pharmacist about your medicines.
                 </p>
@@ -749,15 +700,56 @@ export default function DashboardPage() {
                   href={selectedDrugInfo.source_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center text-xs underline text-[#FACC15]"
+                  className="inline-flex items-center text-xs underline text-[#EAB308]"
                 >
                   View full FDA label (OpenFDA)
                 </a>
               </div>
             </div>
-          </div>,
-          document.body,
-        )}
-    </>
+          )}
+
+          {/* GROUPED DOSES */}
+          <div className="space-y-6">
+            {groupedKeys.length > 0 ? (
+              groupedKeys.map((group) => (
+                <div key={group} className="space-y-4">
+                  <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
+                    {group} Doses
+                  </h3>
+                  <div className="space-y-3">
+                    {grouped[group].map((dose) => {
+                      const med = medications.find(
+                        (m) => m.id === dose.medicationId,
+                      );
+                      if (!med) return null;
+                      return (
+                        <DoseCard
+                          key={dose.id}
+                          dose={dose}
+                          medication={med}
+                          onMarkTaken={handleDoseTaken}
+                          onSkip={handleDoseSkipped}
+                          onLearnMore={handleLearnMore}
+                          learnMoreLoading={infoLoadingMedId === med.id}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
+                <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
+                <p className="text-lg sm:text-xl">
+                  No medications scheduled for this day.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <MonthlyCalendar doses={doses} medications={medications} />
+        </div>
+      </div>
+    </main>
   );
 }
