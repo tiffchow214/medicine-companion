@@ -599,98 +599,102 @@ export default function DashboardPage() {
   };
 
   return (
-    <main
-      className="min-h-screen"
-      style={{
-        ...pageTextStyle,
-        backgroundImage:
-          "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed',
-      }}
-    >
-      <div className="min-h-screen flex items-start justify-center p-4 sm:p-6 md:p-8">
-        <div className="w-full max-w-5xl space-y-8">
-          {/* HEADER CARD */}
-          <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
-            <div className="flex justify-between items-center mb-6">
-              <div className="text-left">
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
-                  {getGreeting()}, {profile.name}
-                </h1>
+    <>
+      {/* MAIN PAGE */}
+      <main
+        className="min-h-screen"
+        style={{
+          ...pageTextStyle,
+          backgroundImage:
+            "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/med-reminder.png')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundAttachment: 'fixed',
+        }}
+      >
+        <div className="min-h-screen flex items-start justify-center p-4 sm:p-6 md:p-8">
+          <div className="w-full max-w-5xl space-y-8">
+            {/* HEADER CARD */}
+            <div className="backdrop-blur-sm bg-black/60 rounded-2xl shadow-2xl px-6 py-6 sm:px-10 sm:py-8 border border-white/20">
+              <div className="flex justify-between items-center mb-6">
+                <div className="text-left">
+                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-snug drop-shadow-lg">
+                    {getGreeting()}, {profile.name}
+                  </h1>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => router.push('/settings')}
+                  className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
+                >
+                  <User className="w-5 h-5" />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => router.push('/settings')}
-                className="w-11 h-11 bg-[#FACC15] rounded-full flex items-center justify-center text-black border-2 border-white shadow-lg"
-              >
-                <User className="w-5 h-5" />
-              </button>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-center drop-shadow-lg">
+                Your medicines for{' '}
+                <span
+                  className="font-extrabold"
+                  style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
+                >
+                  today
+                </span>
+              </h2>
+
+              <WeekSelector
+                selectedDay={selectedDay}
+                setSelectedDay={setSelectedDay}
+              />
             </div>
 
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-center drop-shadow-lg">
-              Your medicines for{' '}
-              <span
-                className="font-extrabold"
-                style={{ color: '#FACC15', WebkitTextFillColor: '#FACC15' }}
-              >
-                today
-              </span>
-            </h2>
-
-            <WeekSelector
-              selectedDay={selectedDay}
-              setSelectedDay={setSelectedDay}
-            />
-          </div>
-
-          {/* GROUPED DOSES */}
-          <div className="space-y-6">
-            {groupedKeys.length > 0 ? (
-              groupedKeys.map((group) => (
-                <div key={group} className="space-y-4">
-                  <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
-                    {group} Doses
-                  </h3>
-                  <div className="space-y-3">
-                    {grouped[group].map((dose) => {
-                      const med = medications.find(
-                        (m) => m.id === dose.medicationId,
-                      );
-                      if (!med) return null;
-                      return (
-                        <DoseCard
-                          key={dose.id}
-                          dose={dose}
-                          medication={med}
-                          onMarkTaken={handleDoseTaken}
-                          onSkip={handleDoseSkipped}
-                          onLearnMore={handleLearnMore}
-                          learnMoreLoading={infoLoadingMedId === med.id}
-                        />
-                      );
-                    })}
+            {/* GROUPED DOSES */}
+            <div className="space-y-6">
+              {groupedKeys.length > 0 ? (
+                groupedKeys.map((group) => (
+                  <div key={group} className="space-y-4">
+                    <h3 className="text-xl sm:text-2xl font-extrabold border-l-4 border-[#FACC15] pl-3 drop-shadow">
+                      {group} Doses
+                    </h3>
+                    <div className="space-y-3">
+                      {grouped[group].map((dose) => {
+                        const med = medications.find(
+                          (m) => m.id === dose.medicationId,
+                        );
+                        if (!med) return null;
+                        return (
+                          <DoseCard
+                            key={dose.id}
+                            dose={dose}
+                            medication={med}
+                            onMarkTaken={handleDoseTaken}
+                            onSkip={handleDoseSkipped}
+                            onLearnMore={handleLearnMore}
+                            learnMoreLoading={infoLoadingMedId === med.id}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
+                  <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
+                  <p className="text-lg sm:text-xl">
+                    No medications scheduled for this day.
+                  </p>
                 </div>
-              ))
-            ) : (
-              <div className="p-8 text-center backdrop-blur-sm bg-black/60 rounded-2xl shadow-xl border border-white/20">
-                <Pill className="w-10 h-10 text-[#FACC15] mx-auto mb-3" />
-                <p className="text-lg sm:text-xl">
-                  No medications scheduled for this day.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
+
+            <MonthlyCalendar doses={doses} medications={medications} />
           </div>
-
-          <MonthlyCalendar doses={doses} medications={medications} />
         </div>
-      </div>
+      </main>
 
+      {/* MODAL OUTSIDE <main> WITH VERY HIGH Z-INDEX */}
       {selectedDrugInfo && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 px-4">
           <div className="max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 text-white border border-white/20 p-6">
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -751,6 +755,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }
